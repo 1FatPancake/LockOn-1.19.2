@@ -3,6 +3,7 @@ package net.leolifeless.lockonmod;
 import com.mojang.logging.LogUtils;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.client.event.RegisterKeyMappingsEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -28,6 +29,9 @@ public class LockOnMod {
         // Register the commonSetup method for modloading
         modEventBus.addListener(this::commonSetup);
 
+        // Initialize keybindings
+        LockOnKeybinds.init();
+
         // Register ourselves for server and other game events we are interested in
         MinecraftForge.EVENT_BUS.register(this);
 
@@ -37,14 +41,20 @@ public class LockOnMod {
             LOGGER.info("Lock-On Mod initializing...");
     }
 
+    // This is the correct way to register key mappings in 1.19.2
+    private void onRegisterKeyMappings(final RegisterKeyMappingsEvent event) {
+        LockOnKeybinds.register(event);
+    }
+
     // You can use SubscribeEvent and let the Event Bus discover methods to call
     @SubscribeEvent
     public void onServerStarting(ServerStartingEvent event) {
-
+        // Server starting logic
     }
+
     // Helper method to create resource locations for this mod
     public static ResourceLocation location(String path) {
-        return new ResourceLocation(MOD_ID + ";" + path);
+        return new ResourceLocation(MOD_ID, path); // Fixed constructor usage
     }
 
     // You can use EventBusSubscriber to automatically register all static methods in the class annotated with @SubscribeEvent
@@ -52,11 +62,8 @@ public class LockOnMod {
     public static class ClientModEvents {
         @SubscribeEvent
         public static void onClientSetup(FMLClientSetupEvent event) {
-            // Register the key binding
-            event.enqueueWork(() -> {
-                LockOnKeybinds.register();
-            });
+            // Client setup logic
+            LOGGER.info("Lock-On Mod client setup complete");
         }
     }
-
 }

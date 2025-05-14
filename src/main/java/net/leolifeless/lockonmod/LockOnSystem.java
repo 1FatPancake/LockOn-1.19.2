@@ -1,4 +1,5 @@
 package net.leolifeless.lockonmod;
+
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.world.entity.Entity;
@@ -76,9 +77,8 @@ public class LockOnSystem {
         if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) return;
 
         if (targetEntity != null && targetEntity.isAlive()) {
-            // Here we would render a marker or indicator on the locked entity
-            // This requires more complex rendering code which I'll cover in a separate method
-            renderLockOnIndicator(event, targetEntity);
+            // Use the renderer to show the indicator
+            LockOnRenderer.renderLockOnIndicator(event, targetEntity);
         }
     }
 
@@ -144,23 +144,6 @@ public class LockOnSystem {
         // Get next target (loop around to the beginning if necessary)
         int nextIndex = (currentIndex + 1) % potentialTargets.size();
         targetEntity = potentialTargets.get(nextIndex);
-    }
-
-    /**
-     * Renders an indicator on the locked target
-     * This is a placeholder - you'll need to implement actual rendering
-     */
-    private static void renderLockOnIndicator(RenderLevelStageEvent event, Entity targetEntity) {
-        // This is where you would render something to indicate the locked-on target
-        // For now this is a placeholder - rendering properly requires more complex code
-
-        // Example implementation would:
-        // 1. Set up rendering context (matrices, buffers)
-        // 2. Calculate screen position for the target entity
-        // 3. Render a marker (like a circle or crosshair) at that position
-
-        // A complete implementation would need custom rendering with buffer builders
-        // This goes beyond this starter code but would be the next step
     }
 
     /**

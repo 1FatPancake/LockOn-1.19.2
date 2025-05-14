@@ -2,6 +2,7 @@ package net.leolifeless.lockonmod;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.KeyMapping;
+import net.minecraftforge.client.event.RegisterKeyMappingsEvent;
 import net.minecraftforge.client.settings.KeyConflictContext;
 import net.minecraftforge.client.settings.KeyModifier;
 import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
@@ -38,13 +39,9 @@ public class LockOnKeybinds {
         );
     }
 
-    // This method should be called during the ClientSetupEvent
-    public static void register(final FMLClientSetupEvent event) {
-        // Register the keybindings using the new method in 1.19.2
-        event.enqueueWork(() -> {
-            net.minecraftforge.client.RegisterKeyMappingsEvent registrationEvent = new net.minecraftforge.client.RegisterKeyMappingsEvent();
-            registrationEvent.register(lockOnKey);
-            registrationEvent.register(cycleTargetKey);
-        });
+    // In Forge 1.19.2, keybindings are registered through the RegisterKeyMappingsEvent
+    public static void register(RegisterKeyMappingsEvent event) {
+        event.register(lockOnKey);
+        event.register(cycleTargetKey);
     }
 }
