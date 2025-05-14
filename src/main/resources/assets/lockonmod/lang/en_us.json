@@ -1,0 +1,5 @@
+{
+  "key.categories.lockonmod" : "TargetLock Key Category",
+  "key.lockonmod.lockon" : "Entity Target",
+  "key.lockonmod.cycle_target" : "Entity Switch"
+}

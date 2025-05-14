@@ -29,6 +29,8 @@ public class LockOnMod {
         // Register the commonSetup method for modloading
         modEventBus.addListener(this::commonSetup);
 
+        // Register the key mapping registration method
+        modEventBus.addListener(this::onRegisterKeyMappings);  // Add this line
         // Initialize keybindings
         LockOnKeybinds.init();
 
