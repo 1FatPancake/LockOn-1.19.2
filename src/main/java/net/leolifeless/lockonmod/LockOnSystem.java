@@ -119,6 +119,55 @@ public class LockOnSystem {
     }
 
     /**
+     * Follows the target entity
+     */
+    @SubscribeEvent
+    public static void onCameraSetup(TickEvent.ClientTickEvent event) {
+        if (event.phase != TickEvent.Phase.END) return;
+
+        Minecraft minecraft = Minecraft.getInstance();
+        LocalPlayer player = minecraft.player;
+
+        if (player == null || minecraft.level == null || targetEntity == null) return;
+
+        // Only update camera if we have a target
+        if (targetEntity.isAlive() && player.isAlive()) {
+            // Get positions
+            Vec3 playerPos = player.getEyePosition();
+            // Target center position (adjusting for entity height)
+            Vec3 targetPos = targetEntity.position().add(0, targetEntity.getBbHeight() * 0.5, 0);
+
+            // Calculate direction vector from player to target
+            Vec3 directionVec = targetPos.subtract(playerPos).normalize();
+
+            // Convert direction to rotation (yaw and pitch)
+            double horizontalDistance = Math.sqrt(directionVec.x * directionVec.x + directionVec.z * directionVec.z);
+            float yaw = (float) (Math.atan2(directionVec.z, directionVec.x) * 180.0 / Math.PI) - 90.0F;
+            float pitch = (float) -(Math.atan2(directionVec.y, horizontalDistance) * 180.0 / Math.PI);
+
+            // Smoothly rotate player's view toward the target
+            float rotationSpeed = 0.5F; // Adjust this value as needed
+
+            // Get current rotations
+            float currentYaw = player.getYRot();
+            float currentPitch = player.getXRot();
+
+            // Calculate the shortest path for yaw rotation
+            float yawDiff = yaw - currentYaw;
+            while (yawDiff > 180) yawDiff -= 360;
+            while (yawDiff < -180) yawDiff += 360;
+
+            // Apply smooth rotation
+            float newYaw = currentYaw + yawDiff * rotationSpeed;
+            float newPitch = currentPitch + (pitch - currentPitch) * rotationSpeed;
+
+            // Apply the rotations to the player
+            player.setYRot(newYaw);
+            player.setXRot(newPitch);
+        }
+    }
+
+    /**
      * Cycles to the next potential target
      */
     private static void cycleTarget(LocalPlayer player) {
