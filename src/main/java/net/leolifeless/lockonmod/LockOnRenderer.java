@@ -13,15 +13,9 @@ import net.minecraftforge.client.event.RenderLevelStageEvent;
 import java.awt.*;
 
 public class LockOnRenderer {
-    private static final float INDICATOR_SIZE = 0.5F; // Size of the lock-on indicator
-    private static final Color INDICATOR_COLOR = new Color(255, 50, 50, 180); // Red with alpha
-    private static final Color INDICATOR_OUTLINE_COLOR = new Color(255, 255, 255, 220); // White outline
-
     // Animation variables
     private static long lastTime = 0;
     private static float pulseSize = 0.0F;
-    private static final float PULSE_SPEED = 1.5F; // Speed of the pulse animation
-    private static final float PULSE_AMPLITUDE = 0.15F; // Size variation in pulse
 
     /**
      * Renders the lock-on indicator around the target entity
@@ -64,8 +58,9 @@ public class LockOnRenderer {
         RenderSystem.setShader(GameRenderer::getPositionColorShader);
 
         // Draw the lock-on indicator with pulse effect
-        float animatedSize = INDICATOR_SIZE + pulseSize;
-        drawLockOnCircle(poseStack, animatedSize, INDICATOR_COLOR);
+        float indicatorSize = LockOnConfig.getIndicatorSize();
+        float animatedSize = indicatorSize + pulseSize;
+        drawLockOnCircle(poseStack, animatedSize, LockOnConfig.getIndicatorColor());
 
         // Clean up rendering
         RenderSystem.enableCull();
@@ -87,8 +82,10 @@ public class LockOnRenderer {
         }
 
         // Calculate pulse effect based on sine wave
-        float time = currentTime / 1000.0F * PULSE_SPEED;
-        pulseSize = (float) Math.sin(time) * PULSE_AMPLITUDE;
+        float pulseSpeed = LockOnConfig.getPulseSpeed();
+        float pulseAmplitude = LockOnConfig.getPulseAmplitude();
+        float time = currentTime / 1000.0F * pulseSpeed;
+        pulseSize = (float) Math.sin(time) * pulseAmplitude;
 
         lastTime = currentTime;
     }
@@ -126,7 +123,7 @@ public class LockOnRenderer {
         BufferUploader.drawWithShader(bufferBuilder.end());
 
         // Draw the outline
-        drawLockOnCircleOutline(poseStack, size, INDICATOR_OUTLINE_COLOR);
+        drawLockOnCircleOutline(poseStack, size, LockOnConfig.getOutlineColor());
     }
 
     /**

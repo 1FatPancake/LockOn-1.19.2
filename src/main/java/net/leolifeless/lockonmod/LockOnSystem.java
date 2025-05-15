@@ -24,7 +24,7 @@ public class LockOnSystem {
 
     // Interpolation settings for smooth camera movement
     private static final float ROTATION_SPEED = 0.25F; // Lower value = smoother but slower camera
-    private static final float MIN_ROTATION_SPEED = 0.3F; // Minimum rotation speed
+    private static final float MIN_ROTATION_SPEED = 0.4F; // Minimum rotation speed
     private static final float DISTANCE_WEIGHT = 0.5F; // How much distance affects rotation speed
 
     // Previous rotation values for interpolation
