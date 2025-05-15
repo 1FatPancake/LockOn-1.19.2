@@ -22,6 +22,16 @@ public class LockOnSystem {
     private static final float MAX_DISTANCE = 32.0F;  // Maximum distance to lock onto entities
     private static final float SEARCH_RADIUS = 10.0F; // Radius around player to search for entities
 
+    // Interpolation settings for smooth camera movement
+    private static final float ROTATION_SPEED = 0.25F; // Lower value = smoother but slower camera
+    private static final float MIN_ROTATION_SPEED = 0.3F; // Minimum rotation speed
+    private static final float DISTANCE_WEIGHT = 0.5F; // How much distance affects rotation speed
+
+    // Previous rotation values for interpolation
+    private static float prevYaw = 0F;
+    private static float prevPitch = 0F;
+    private static boolean wasLocked = false;
+
     /**
      * Handles the key input events for lock-on functionality
      */
@@ -38,6 +48,7 @@ public class LockOnSystem {
             } else {
                 // Clear target if one is already selected
                 targetEntity = null;
+                wasLocked = false;
             }
         }
 
@@ -64,7 +75,13 @@ public class LockOnSystem {
             if (!targetEntity.isAlive() ||
                     targetEntity.distanceTo(player) > MAX_DISTANCE ||
                     targetEntity.level != player.level) {
-                targetEntity = null;
+                // Try to find a new target automatically when current one becomes invalid
+                findTarget(player);
+
+                // If no new target found, clear lock-on state
+                if (targetEntity == null) {
+                    wasLocked = false;
+                }
             }
         }
     }
@@ -109,17 +126,24 @@ public class LockOnSystem {
             // Sort by how closely they align with where the player is looking
             potentialTargets.sort(Comparator.comparingDouble(entity -> {
                 Vec3 directionToEntity = entity.position().subtract(eyePosition).normalize();
-                // Higher dot product means the entity is more directly in front of the player
-                return -directionToEntity.dot(lookVector);
+                double dotProduct = directionToEntity.dot(lookVector);
+
+                // Consider distance as a secondary factor when targets are in similar direction
+                double distance = entity.distanceTo(player);
+                double weight = 0.8; // Weight for direction vs distance
+
+                // Combined score: Higher is better (closer to look direction and closer to player)
+                return -(dotProduct * weight + (1 - weight) * (1 - distance/MAX_DISTANCE));
             }));
 
             // Take the first entity (most aligned with player's look direction)
             targetEntity = potentialTargets.get(0);
+            wasLocked = true;
         }
     }
 
     /**
-     * Follows the target entity
+     * Follows the target entity with smooth camera movement
      */
     @SubscribeEvent
     public static void onCameraSetup(TickEvent.ClientTickEvent event) {
@@ -128,43 +152,73 @@ public class LockOnSystem {
         Minecraft minecraft = Minecraft.getInstance();
         LocalPlayer player = minecraft.player;
 
-        if (player == null || minecraft.level == null || targetEntity == null) return;
+        if (player == null || minecraft.level == null) return;
 
         // Only update camera if we have a target
-        if (targetEntity.isAlive() && player.isAlive()) {
+        if (targetEntity != null && targetEntity.isAlive() && player.isAlive()) {
             // Get positions
             Vec3 playerPos = player.getEyePosition();
-            // Target center position (adjusting for entity height)
-            Vec3 targetPos = targetEntity.position().add(0, targetEntity.getBbHeight() * 0.5, 0);
+
+            // Target position with predictive targeting based on entity velocity
+            Vec3 targetPos = targetEntity.position()
+                    .add(0, targetEntity.getBbHeight() * 0.5, 0)
+                    .add(targetEntity.getDeltaMovement().scale(0.5)); // Predict movement
 
             // Calculate direction vector from player to target
             Vec3 directionVec = targetPos.subtract(playerPos).normalize();
 
             // Convert direction to rotation (yaw and pitch)
             double horizontalDistance = Math.sqrt(directionVec.x * directionVec.x + directionVec.z * directionVec.z);
-            float yaw = (float) (Math.atan2(directionVec.z, directionVec.x) * 180.0 / Math.PI) - 90.0F;
-            float pitch = (float) -(Math.atan2(directionVec.y, horizontalDistance) * 180.0 / Math.PI);
-
-            // Smoothly rotate player's view toward the target
-            float rotationSpeed = 0.5F; // Adjust this value as needed
+            float targetYaw = (float) (Math.atan2(directionVec.z, directionVec.x) * 180.0 / Math.PI) - 90.0F;
+            float targetPitch = (float) -(Math.atan2(directionVec.y, horizontalDistance) * 180.0 / Math.PI);
 
             // Get current rotations
             float currentYaw = player.getYRot();
             float currentPitch = player.getXRot();
 
             // Calculate the shortest path for yaw rotation
-            float yawDiff = yaw - currentYaw;
+            float yawDiff = targetYaw - currentYaw;
             while (yawDiff > 180) yawDiff -= 360;
             while (yawDiff < -180) yawDiff += 360;
 
-            // Apply smooth rotation
-            float newYaw = currentYaw + yawDiff * rotationSpeed;
-            float newPitch = currentPitch + (pitch - currentPitch) * rotationSpeed;
+            // Initialize previous values if first frame of lock-on
+            if (!wasLocked) {
+                prevYaw = currentYaw;
+                prevPitch = currentPitch;
+                wasLocked = true;
+            }
+
+            // Adaptive rotation speed based on angle difference and distance
+            float distance = player.distanceTo(targetEntity);
+            float adaptiveSpeed = ROTATION_SPEED * (1 + (yawDiff * yawDiff / 900)) *
+                    (1 + DISTANCE_WEIGHT * (distance / MAX_DISTANCE));
+
+            // Ensure minimum rotation speed for responsiveness
+            adaptiveSpeed = Math.max(MIN_ROTATION_SPEED, Math.min(adaptiveSpeed, 0.3F));
+
+            // Apply double smoothing for more natural camera movement
+            float smoothYaw = interpolateRotation(prevYaw, currentYaw + yawDiff * adaptiveSpeed, 0.7F);
+            float smoothPitch = interpolateRotation(prevPitch, currentPitch + (targetPitch - currentPitch) * adaptiveSpeed, 0.7F);
+
+            // Update previous values for next frame
+            prevYaw = smoothYaw;
+            prevPitch = smoothPitch;
 
             // Apply the rotations to the player
-            player.setYRot(newYaw);
-            player.setXRot(newPitch);
+            player.setYRot(smoothYaw);
+            player.setXRot(smoothPitch);
         }
+    }
+
+    /**
+     * Smoothly interpolates between two angles
+     */
+    private static float interpolateRotation(float prev, float current, float factor) {
+        float diff = current - prev;
+        while (diff > 180) diff -= 360;
+        while (diff < -180) diff += 360;
+
+        return prev + diff * factor;
     }
 
     /**
@@ -193,6 +247,13 @@ public class LockOnSystem {
         // Get next target (loop around to the beginning if necessary)
         int nextIndex = (currentIndex + 1) % potentialTargets.size();
         targetEntity = potentialTargets.get(nextIndex);
+
+        // Reset smoothing values when switching targets
+        LocalPlayer localPlayer = Minecraft.getInstance().player;
+        if (localPlayer != null) {
+            prevYaw = localPlayer.getYRot();
+            prevPitch = localPlayer.getXRot();
+        }
     }
 
     /**
