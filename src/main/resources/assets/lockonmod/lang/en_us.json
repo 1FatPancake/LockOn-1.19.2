@@ -1,5 +1,37 @@
 {
-  "key.categories.lockonmod" : "TargetLock Key Category",
-  "key.lockonmod.lockon" : "Entity Target",
-  "key.lockonmod.cycle_target" : "Entity Switch"
+  "key.categories.lockonmod": "Lock-On Targeting",
+  "key.lockonmod.lockon": "Lock-On / Toggle Target",
+  "key.lockonmod.cycle_target": "Cycle Target Forward",
+  "key.lockonmod.cycle_backward": "Cycle Target Backward",
+  "key.lockonmod.toggle_mode": "Toggle Lock-On Mode",
+  "key.lockonmod.nearest_target": "Target Nearest Entity",
+  "key.lockonmod.hostile_only": "Target Nearest Hostile",
+
+  "lockonmod.mode.toggle": "Toggle Mode",
+  "lockonmod.mode.hold": "Hold Mode",
+  "lockonmod.mode.press": "Press Mode",
+  "lockonmod.mode.quick_cycle": "Quick Cycle Active",
+
+  "lockonmod.status.locked": "Locked onto %s",
+  "lockonmod.status.unlocked": "Lock-on disabled",
+  "lockonmod.status.no_target": "No valid target found",
+  "lockonmod.status.target_switched": "Target switched to %s",
+  "lockonmod.status.mode_changed": "Lock-on mode: %s",
+
+  "lockonmod.config.title": "Lock-On Configuration",
+  "lockonmod.config.targeting": "Targeting Settings",
+  "lockonmod.config.camera": "Camera Settings",
+  "lockonmod.config.visual": "Visual Settings",
+  "lockonmod.config.audio": "Audio Settings",
+  "lockonmod.config.performance": "Performance Settings",
+  "lockonmod.config.keybinds": "Keybinding Settings",
+
+  "lockonmod.indicator.style.circle": "Circle",
+  "lockonmod.indicator.style.crosshair": "Crosshair",
+  "lockonmod.indicator.style.square": "Square",
+  "lockonmod.indicator.style.diamond": "Diamond",
+  "lockonmod.indicator.style.triangle": "Triangle",
+  "lockonmod.indicator.style.hexagon": "Hexagon",
+  "lockonmod.indicator.style.star": "Star",
+  "lockonmod.indicator.style.plus": "Plus"
 }
