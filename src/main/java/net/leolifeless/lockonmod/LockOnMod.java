@@ -45,7 +45,7 @@ public class LockOnMod {
     }
 
     private void commonSetup(final FMLCommonSetupEvent event){
-            LOGGER.info("Lock-On Mod initializing...");
+        LOGGER.info("Lock-On Mod initializing...");
     }
 
     // This is the correct way to register key mappings in 1.19.2
