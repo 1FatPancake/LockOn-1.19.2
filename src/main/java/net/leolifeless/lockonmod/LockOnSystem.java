@@ -2,9 +2,26 @@ package net.leolifeless.lockonmod;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.core.Registry;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.MobCategory;
+import net.minecraft.world.entity.animal.Animal;
+import net.minecraft.world.entity.boss.wither.WitherBoss;
+import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
+import net.minecraft.world.entity.monster.Monster;
+import net.minecraft.world.entity.npc.AbstractVillager;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.client.event.InputEvent;
 import net.minecraftforge.client.event.RenderLevelStageEvent;
@@ -15,51 +32,55 @@ import net.minecraftforge.fml.common.Mod;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Mod.EventBusSubscriber(modid = LockOnMod.MOD_ID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public class LockOnSystem {
     private static Entity targetEntity = null;
-    private static final float MAX_DISTANCE = 32.0F;  // Maximum distance to lock onto entities
-    private static final float SEARCH_RADIUS = 10.0F; // Radius around player to search for entities
+    private static List<Entity> potentialTargets = new ArrayList<>();
+    private static int currentTargetIndex = 0;
+    private static int tickCounter = 0;
+    private static boolean wasKeyHeld = false;
 
-    // Interpolation settings for smooth camera movement
-    private static final float ROTATION_SPEED = 0.25F; // Lower value = smoother but slower camera
-    private static final float MIN_ROTATION_SPEED = 0.4F; // Minimum rotation speed
-    private static final float DISTANCE_WEIGHT = 0.5F; // How much distance affects rotation speed
-
-    // Previous rotation values for interpolation
+    // Interpolation values for smooth camera movement
     private static float prevYaw = 0F;
     private static float prevPitch = 0F;
     private static boolean wasLocked = false;
 
     /**
-     * Handles the key input events for lock-on functionality
+     * Enhanced key input handler with multiple modes
      */
     @SubscribeEvent
     public static void onKeyInput(InputEvent.Key event) {
         LocalPlayer player = Minecraft.getInstance().player;
         if (player == null) return;
 
-        // Check if the lock-on key was just pressed
-        if (LockOnKeybinds.lockOnKey.consumeClick()) {
-            if (targetEntity == null) {
-                // Find a target if none is selected
-                findTarget(player);
-            } else {
-                // Clear target if one is already selected
-                targetEntity = null;
-                wasLocked = false;
+        // Check game mode restrictions
+        if (shouldDisableForGameMode(player)) return;
+
+        boolean lockKeyPressed = LockOnKeybinds.lockOnKey.isDown();
+        boolean lockKeyClicked = LockOnKeybinds.lockOnKey.consumeClick();
+        boolean cycleKeyClicked = LockOnKeybinds.cycleTargetKey.consumeClick();
+
+        // Handle different keybinding modes
+        if (LockOnConfig.holdToMaintainLock()) {
+            handleHoldMode(player, lockKeyPressed);
+        } else if (LockOnConfig.isToggleMode()) {
+            if (lockKeyClicked) {
+                handleToggleMode(player);
             }
         }
 
-        // Check if the cycle target key was just pressed
-        if (LockOnKeybinds.cycleTargetKey.consumeClick() && targetEntity != null) {
+        // Handle target cycling
+        if (cycleKeyClicked && targetEntity != null && LockOnConfig.canCycleThroughTargets()) {
             cycleTarget(player);
         }
+
+        wasKeyHeld = lockKeyPressed;
     }
 
     /**
-     * Updates the target entity during client tick events
+     * Enhanced client tick with configurable update frequency
      */
     @SubscribeEvent
     public static void onClientTick(TickEvent.ClientTickEvent event) {
@@ -70,80 +91,28 @@ public class LockOnSystem {
 
         if (player == null || minecraft.level == null) return;
 
-        // Check if target is still valid (not dead, not too far, etc.)
-        if (targetEntity != null) {
-            if (!targetEntity.isAlive() ||
-                    targetEntity.distanceTo(player) > MAX_DISTANCE ||
-                    targetEntity.level != player.level) {
-                // Try to find a new target automatically when current one becomes invalid
-                findTarget(player);
+        // Update only at configured frequency
+        tickCounter++;
+        if (tickCounter % LockOnConfig.getUpdateFrequency() != 0) return;
 
-                // If no new target found, clear lock-on state
-                if (targetEntity == null) {
-                    wasLocked = false;
+        // Validate current target
+        if (targetEntity != null) {
+            if (!isValidTarget(targetEntity, player)) {
+                // Auto-find new target if current becomes invalid
+                if (LockOnConfig.isSmartTargeting()) {
+                    findTarget(player);
+                    if (targetEntity == null) {
+                        onTargetLost();
+                    }
+                } else {
+                    clearTarget();
                 }
             }
         }
     }
 
     /**
-     * Renders the lock-on indicator during the world rendering
-     */
-    @SubscribeEvent
-    public static void onRenderWorld(RenderLevelStageEvent event) {
-        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) return;
-
-        if (targetEntity != null && targetEntity.isAlive()) {
-            // Use the renderer to show the indicator
-            LockOnRenderer.renderLockOnIndicator(event, targetEntity);
-        }
-    }
-
-    /**
-     * Finds a suitable target entity for lock-on
-     */
-    private static void findTarget(LocalPlayer player) {
-        if (player.level == null) return;
-
-        Vec3 eyePosition = player.getEyePosition();
-        Vec3 lookVector = player.getViewVector(1.0F).normalize();
-
-        // Create a bounding box around the player to search for entities
-        AABB searchBox = player.getBoundingBox().inflate(SEARCH_RADIUS);
-        List<Entity> nearbyEntities = player.level.getEntities(player, searchBox);
-
-        // Filter and sort entities by relevance (living entities, distance, angle to look vector)
-        List<Entity> potentialTargets = new ArrayList<>();
-
-        for (Entity entity : nearbyEntities) {
-            if (entity instanceof LivingEntity && entity.isAlive()) {
-                // Only consider living entities
-                potentialTargets.add(entity);
-            }
-        }
-
-        if (!potentialTargets.isEmpty()) {
-            // Sort by how closely they align with where the player is looking
-            potentialTargets.sort(Comparator.comparingDouble(entity -> {
-                Vec3 directionToEntity = entity.position().subtract(eyePosition).normalize();
-                double dotProduct = directionToEntity.dot(lookVector);
-
-                // Consider distance as a secondary factor when targets are in similar direction
-                double distance = entity.distanceTo(player);
-                double weight = 0.8; // Weight for direction vs distance
-
-                // Combined score: Higher is better (closer to look direction and closer to player)
-                return -(dotProduct * weight + (1 - weight) * (1 - distance/MAX_DISTANCE));
-            }));
-
-            // Take the first entity (most aligned with player's look direction)
-            targetEntity = potentialTargets.get(0);
-            wasLocked = true;
-        }
-    }
-
-    /**
-     * Follows the target entity with smooth camera movement
+     * Enhanced camera control with predictive targeting
      */
     @SubscribeEvent
     public static void onCameraSetup(TickEvent.ClientTickEvent event) {
@@ -152,107 +121,464 @@ public class LockOnSystem {
         Minecraft minecraft = Minecraft.getInstance();
         LocalPlayer player = minecraft.player;
 
-        if (player == null || minecraft.level == null) return;
+        if (player == null || minecraft.level == null || targetEntity == null) return;
+        if (!targetEntity.isAlive() || !player.isAlive()) return;
 
-        // Only update camera if we have a target
-        if (targetEntity != null && targetEntity.isAlive() && player.isAlive()) {
-            // Get positions
-            Vec3 playerPos = player.getEyePosition();
+        // Check if camera should auto-break on obstruction
+        if (LockOnConfig.autoBreakOnObstruction() && !hasLineOfSight(player, targetEntity)) {
+            clearTarget();
+            return;
+        }
 
-            // Target position with predictive targeting based on entity velocity
-            Vec3 targetPos = targetEntity.position()
-                    .add(0, targetEntity.getBbHeight() * 0.5, 0)
-                    .add(targetEntity.getDeltaMovement().scale(0.5)); // Predict movement
+        // Get positions
+        Vec3 playerPos = player.getEyePosition();
+        Vec3 targetPos = getTargetPosition(targetEntity);
 
-            // Calculate direction vector from player to target
-            Vec3 directionVec = targetPos.subtract(playerPos).normalize();
+        // Apply predictive targeting if enabled
+        if (LockOnConfig.isPredictiveTargeting()) {
+            Vec3 prediction = targetEntity.getDeltaMovement().scale(LockOnConfig.getPredictionStrength());
+            targetPos = targetPos.add(prediction);
+        }
 
-            // Convert direction to rotation (yaw and pitch)
-            double horizontalDistance = Math.sqrt(directionVec.x * directionVec.x + directionVec.z * directionVec.z);
-            float targetYaw = (float) (Math.atan2(directionVec.z, directionVec.x) * 180.0 / Math.PI) - 90.0F;
-            float targetPitch = (float) -(Math.atan2(directionVec.y, horizontalDistance) * 180.0 / Math.PI);
+        // Calculate direction vector
+        Vec3 directionVec = targetPos.subtract(playerPos).normalize();
 
-            // Get current rotations
-            float currentYaw = player.getYRot();
-            float currentPitch = player.getXRot();
+        // Convert to rotation
+        double horizontalDistance = Math.sqrt(directionVec.x * directionVec.x + directionVec.z * directionVec.z);
+        float targetYaw = (float) (Math.atan2(directionVec.z, directionVec.x) * 180.0 / Math.PI) - 90.0F;
+        float targetPitch = (float) -(Math.atan2(directionVec.y, horizontalDistance) * 180.0 / Math.PI);
 
-            // Calculate the shortest path for yaw rotation
-            float yawDiff = targetYaw - currentYaw;
-            while (yawDiff > 180) yawDiff -= 360;
-            while (yawDiff < -180) yawDiff += 360;
+        // Get current rotations
+        float currentYaw = player.getYRot();
+        float currentPitch = player.getXRot();
 
-            // Initialize previous values if first frame of lock-on
-            if (!wasLocked) {
-                prevYaw = currentYaw;
-                prevPitch = currentPitch;
-                wasLocked = true;
-            }
+        // Calculate yaw difference (shortest path)
+        float yawDiff = targetYaw - currentYaw;
+        while (yawDiff > 180) yawDiff -= 360;
+        while (yawDiff < -180) yawDiff += 360;
 
-            // Adaptive rotation speed based on angle difference and distance
-            float distance = player.distanceTo(targetEntity);
-            float adaptiveSpeed = ROTATION_SPEED * (1 + (yawDiff * yawDiff / 900)) *
-                    (1 + DISTANCE_WEIGHT * (distance / MAX_DISTANCE));
+        // Initialize smoothing values
+        if (!wasLocked) {
+            prevYaw = currentYaw;
+            prevPitch = currentPitch;
+            wasLocked = true;
+        }
 
-            // Ensure minimum rotation speed for responsiveness
-            adaptiveSpeed = Math.max(MIN_ROTATION_SPEED, Math.min(adaptiveSpeed, 0.3F));
+        // Calculate adaptive rotation speed
+        float distance = player.distanceTo(targetEntity);
+        float angleDifference = Math.abs(yawDiff) + Math.abs(targetPitch - currentPitch);
 
-            // Apply double smoothing for more natural camera movement
-            float smoothYaw = interpolateRotation(prevYaw, currentYaw + yawDiff * adaptiveSpeed, 0.7F);
-            float smoothPitch = interpolateRotation(prevPitch, currentPitch + (targetPitch - currentPitch) * adaptiveSpeed, 0.7F);
+        float baseSpeed = LockOnConfig.getRotationSpeed();
+        float adaptiveSpeed = calculateAdaptiveSpeed(baseSpeed, distance, angleDifference);
 
-            // Update previous values for next frame
-            prevYaw = smoothYaw;
-            prevPitch = smoothPitch;
+        // Apply smoothing if enabled
+        float newYaw, newPitch;
+        if (LockOnConfig.isSmoothCameraEnabled()) {
+            float smoothingFactor = LockOnConfig.getSmoothingFactor();
+            newYaw = interpolateRotation(prevYaw, currentYaw + yawDiff * adaptiveSpeed, smoothingFactor);
+            newPitch = interpolateRotation(prevPitch, currentPitch + (targetPitch - currentPitch) * adaptiveSpeed, smoothingFactor);
+        } else {
+            newYaw = currentYaw + yawDiff * adaptiveSpeed;
+            newPitch = currentPitch + (targetPitch - currentPitch) * adaptiveSpeed;
+        }
 
-            // Apply the rotations to the player
-            player.setYRot(smoothYaw);
-            player.setXRot(smoothPitch);
+        // Update previous values
+        prevYaw = newYaw;
+        prevPitch = newPitch;
+
+        // Apply rotations
+        player.setYRot(newYaw);
+        player.setXRot(newPitch);
+    }
+
+    /**
+     * Renders the enhanced lock-on indicator
+     */
+    @SubscribeEvent
+    public static void onRenderWorld(RenderLevelStageEvent event) {
+        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) return;
+
+        if (targetEntity != null && targetEntity.isAlive()) {
+            LockOnRenderer.renderLockOnIndicator(event, targetEntity);
         }
     }
 
     /**
-     * Smoothly interpolates between two angles
+     * Handles hold-to-maintain lock mode
+     */
+    private static void handleHoldMode(LocalPlayer player, boolean keyHeld) {
+        if (keyHeld && !wasKeyHeld) {
+            // Key just pressed
+            if (targetEntity == null) {
+                findTarget(player);
+            }
+        } else if (!keyHeld && wasKeyHeld) {
+            // Key just released
+            clearTarget();
+        }
+    }
+
+    /**
+     * Handles toggle lock mode
+     */
+    private static void handleToggleMode(LocalPlayer player) {
+        if (targetEntity == null) {
+            findTarget(player);
+        } else {
+            clearTarget();
+        }
+    }
+
+    /**
+     * Enhanced target finding with multiple modes and filters
+     */
+    private static void findTarget(LocalPlayer player) {
+        if (player.level == null) return;
+
+        // Get potential targets within search radius
+        AABB searchBox = player.getBoundingBox().inflate(LockOnConfig.getSearchRadius());
+        List<Entity> nearbyEntities = player.level.getEntities(player, searchBox);
+
+        // Filter entities based on configuration
+        potentialTargets = nearbyEntities.stream()
+                .filter(entity -> isValidTarget(entity, player))
+                .filter(entity -> passesEntityFilters(entity))
+                .filter(entity -> passesLineOfSightCheck(player, entity))
+                .filter(entity -> passesAngleCheck(player, entity))
+                .limit(LockOnConfig.getMaxTargetsToSearch())
+                .collect(Collectors.toList());
+
+        if (potentialTargets.isEmpty()) return;
+
+        // Sort based on targeting mode
+        sortTargetsByMode(player, potentialTargets);
+
+        // Select the best target
+        targetEntity = potentialTargets.get(0);
+        currentTargetIndex = 0;
+        wasLocked = true;
+
+        // Play lock-on sound
+        playSound(player, "lock_on");
+    }
+
+    /**
+     * Cycles through available targets
+     */
+    private static void cycleTarget(LocalPlayer player) {
+        if (potentialTargets.isEmpty()) {
+            findTarget(player);
+            return;
+        }
+
+        // Update potential targets list
+        potentialTargets = potentialTargets.stream()
+                .filter(entity -> isValidTarget(entity, player))
+                .collect(Collectors.toList());
+
+        if (potentialTargets.size() <= 1) return;
+
+        // Find current target index
+        currentTargetIndex = potentialTargets.indexOf(targetEntity);
+        if (currentTargetIndex == -1) {
+            currentTargetIndex = 0;
+        } else {
+            // Move to next target
+            if (LockOnConfig.reverseScrollCycling()) {
+                currentTargetIndex = (currentTargetIndex - 1 + potentialTargets.size()) % potentialTargets.size();
+            } else {
+                currentTargetIndex = (currentTargetIndex + 1) % potentialTargets.size();
+            }
+        }
+
+        targetEntity = potentialTargets.get(currentTargetIndex);
+
+        // Reset smoothing values
+        prevYaw = player.getYRot();
+        prevPitch = player.getXRot();
+
+        // Play target switch sound
+        playSound(player, "target_switch");
+    }
+
+    /**
+     * Validates if an entity can be targeted
+     */
+    private static boolean isValidTarget(Entity entity, LocalPlayer player) {
+        if (!(entity instanceof LivingEntity) || !entity.isAlive()) return false;
+        if (entity == player) return false;
+        if (entity.distanceTo(player) > LockOnConfig.getMaxLockOnDistance()) return false;
+        if (entity.level != player.level) return false;
+
+        LivingEntity living = (LivingEntity) entity;
+
+        // Health checks
+        float minHealth = LockOnConfig.getMinTargetHealth();
+        float maxHealth = LockOnConfig.getMaxTargetHealth();
+
+        if (living.getHealth() < minHealth) return false;
+        if (maxHealth > 0 && living.getHealth() > maxHealth) return false;
+
+        return true;
+    }
+
+    /**
+     * Checks entity type filters
+     */
+    private static boolean passesEntityFilters(Entity entity) {
+        // Check whitelist/blacklist
+        ResourceLocation entityType = EntityType.getKey(entity.getType());
+        String entityTypeString = entityType.toString();
+
+        if (LockOnConfig.useWhitelist()) {
+            if (!LockOnConfig.getEntityWhitelist().contains(entityTypeString)) return false;
+        } else {
+            if (LockOnConfig.getEntityBlacklist().contains(entityTypeString)) return false;
+        }
+
+        // Type-based filters
+        if (entity instanceof Player && !LockOnConfig.canTargetPlayers()) return false;
+        if (entity instanceof Monster && !LockOnConfig.canTargetHostileMobs()) return false;
+        if (entity instanceof Animal && !LockOnConfig.canTargetAnimals()) return false;
+        if (entity instanceof AbstractVillager && !LockOnConfig.canTargetVillagers()) return false;
+
+        // Boss check
+        if ((entity instanceof WitherBoss || entity instanceof EnderDragon) && !LockOnConfig.canTargetBosses()) return false;
+
+        // Mob category checks
+        MobCategory category = entity.getType().getCategory();
+        switch (category) {
+            case MONSTER:
+                return LockOnConfig.canTargetHostileMobs();
+            case CREATURE:
+                return LockOnConfig.canTargetPassiveMobs();
+            case AMBIENT:
+                return LockOnConfig.canTargetPassiveMobs();
+            case WATER_CREATURE:
+                return LockOnConfig.canTargetPassiveMobs();
+            case WATER_AMBIENT:
+                return LockOnConfig.canTargetPassiveMobs();
+            case MISC:
+                return LockOnConfig.canTargetNeutralMobs();
+            default:
+                return true;
+        }
+    }
+
+    /**
+     * Checks line of sight if required
+     */
+    private static boolean passesLineOfSightCheck(LocalPlayer player, Entity entity) {
+        if (!LockOnConfig.requireLineOfSight()) return true;
+        return hasLineOfSight(player, entity);
+    }
+
+    /**
+     * Checks if entity is within targeting angle
+     */
+    private static boolean passesAngleCheck(LocalPlayer player, Entity entity) {
+        Vec3 playerLook = player.getViewVector(1.0F).normalize();
+        Vec3 directionToEntity = entity.position().subtract(player.getEyePosition()).normalize();
+
+        double dotProduct = playerLook.dot(directionToEntity);
+        double angle = Math.acos(Math.max(-1.0, Math.min(1.0, dotProduct))) * 180.0 / Math.PI;
+
+        return angle <= LockOnConfig.getTargetingAngle();
+    }
+
+    /**
+     * Performs line of sight check with glass penetration option
+     */
+    private static boolean hasLineOfSight(LocalPlayer player, Entity entity) {
+        Vec3 start = player.getEyePosition();
+        Vec3 end = getTargetPosition(entity);
+
+        ClipContext context = new ClipContext(start, end, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, player);
+        BlockHitResult result = player.level.clip(context);
+
+        if (result.getType() == HitResult.Type.MISS) return true;
+
+        // Check glass penetration
+        if (LockOnConfig.canPenetrateGlass()) {
+            BlockState hitBlock = player.level.getBlockState(result.getBlockPos());
+            return hitBlock.is(Blocks.GLASS) || hitBlock.is(Blocks.GLASS_PANE) ||
+                    hitBlock.getBlock().toString().toLowerCase().contains("glass");
+        }
+
+        return false;
+    }
+
+    /**
+     * Sorts targets based on the selected targeting mode
+     */
+    private static void sortTargetsByMode(LocalPlayer player, List<Entity> targets) {
+        LockOnConfig.TargetingMode mode = LockOnConfig.getTargetingMode();
+
+        switch (mode) {
+            case CLOSEST:
+                targets.sort(Comparator.comparingDouble(entity -> entity.distanceTo(player)));
+                break;
+
+            case MOST_DAMAGED:
+                targets.sort((e1, e2) -> {
+                    if (e1 instanceof LivingEntity && e2 instanceof LivingEntity) {
+                        LivingEntity l1 = (LivingEntity) e1;
+                        LivingEntity l2 = (LivingEntity) e2;
+                        float health1 = l1.getHealth() / l1.getMaxHealth();
+                        float health2 = l2.getHealth() / l2.getMaxHealth();
+                        return Float.compare(health1, health2);
+                    }
+                    return 0;
+                });
+                break;
+
+            case CROSSHAIR_CENTERED:
+                Vec3 playerLook = player.getViewVector(1.0F).normalize();
+                targets.sort(Comparator.comparingDouble(entity -> {
+                    Vec3 directionToEntity = entity.position().subtract(player.getEyePosition()).normalize();
+                    return -playerLook.dot(directionToEntity); // Negative for ascending order
+                }));
+                break;
+
+            case THREAT_LEVEL:
+                targets.sort((e1, e2) -> {
+                    int threat1 = calculateThreatLevel(e1);
+                    int threat2 = calculateThreatLevel(e2);
+                    return Integer.compare(threat2, threat1); // Descending order
+                });
+                break;
+        }
+
+        // Apply smart targeting if enabled
+        if (LockOnConfig.isSmartTargeting()) {
+            applySmartTargeting(player, targets);
+        }
+    }
+
+    /**
+     * Applies smart targeting algorithm using multiple factors
+     */
+    private static void applySmartTargeting(LocalPlayer player, List<Entity> targets) {
+        Vec3 playerLook = player.getViewVector(1.0F).normalize();
+
+        targets.sort(Comparator.comparingDouble(entity -> {
+            double distance = entity.distanceTo(player);
+            double normalizedDistance = Math.min(1.0, distance / LockOnConfig.getMaxLockOnDistance());
+
+            Vec3 directionToEntity = entity.position().subtract(player.getEyePosition()).normalize();
+            double angle = Math.acos(Math.max(-1.0, Math.min(1.0, playerLook.dot(directionToEntity))));
+            double normalizedAngle = angle / Math.PI;
+
+            double healthFactor = 1.0;
+            if (entity instanceof LivingEntity) {
+                LivingEntity living = (LivingEntity) entity;
+                healthFactor = 1.0 - (living.getHealth() / living.getMaxHealth());
+            }
+
+            // Weighted score (lower is better)
+            return (normalizedDistance * LockOnConfig.getDistancePriorityWeight()) +
+                    (normalizedAngle * LockOnConfig.getAnglePriorityWeight()) +
+                    (healthFactor * LockOnConfig.getHealthPriorityWeight());
+        }));
+    }
+
+    /**
+     * Calculates threat level for threat-based targeting
+     */
+    private static int calculateThreatLevel(Entity entity) {
+        if (entity instanceof WitherBoss || entity instanceof EnderDragon) return 100;
+        if (entity instanceof Monster) return 50;
+        if (entity instanceof Player) return 30;
+        if (entity instanceof Animal) return 10;
+        return 20;
+    }
+
+    /**
+     * Gets the target position with configurable offset
+     */
+    private static Vec3 getTargetPosition(Entity entity) {
+        float offset = LockOnConfig.getCameraOffset();
+        return entity.position().add(0, entity.getBbHeight() * offset, 0);
+    }
+
+    /**
+     * Calculates adaptive rotation speed
+     */
+    private static float calculateAdaptiveSpeed(float baseSpeed, float distance, float angleDifference) {
+        float distanceWeight = LockOnConfig.getDistanceWeight();
+        float distanceFactor = 1.0F + (distanceWeight * (distance / LockOnConfig.getMaxLockOnDistance()));
+        float angleFactor = 1.0F + (angleDifference / 180.0F);
+
+        float adaptiveSpeed = baseSpeed * distanceFactor * angleFactor;
+
+        return Math.max(LockOnConfig.getMinRotationSpeed(),
+                Math.min(LockOnConfig.getMaxRotationSpeed(), adaptiveSpeed));
+    }
+
+    /**
+     * Smoothly interpolates between angles
      */
     private static float interpolateRotation(float prev, float current, float factor) {
         float diff = current - prev;
         while (diff > 180) diff -= 360;
         while (diff < -180) diff += 360;
-
         return prev + diff * factor;
     }
 
     /**
-     * Cycles to the next potential target
+     * Checks if lock-on should be disabled for current game mode
      */
-    private static void cycleTarget(LocalPlayer player) {
-        if (player.level == null || targetEntity == null) return;
+    private static boolean shouldDisableForGameMode(LocalPlayer player) {
+        if (player.isCreative() && LockOnConfig.disableInCreative()) return true;
+        if (player.isSpectator() && LockOnConfig.disableInSpectator()) return true;
+        return false;
+    }
 
-        // Get all potential targets
-        AABB searchBox = player.getBoundingBox().inflate(SEARCH_RADIUS);
-        List<Entity> nearbyEntities = player.level.getEntities(player, searchBox);
+    /**
+     * Clears the current target
+     */
+    private static void clearTarget() {
+        if (targetEntity != null) {
+            onTargetLost();
+        }
+        targetEntity = null;
+        potentialTargets.clear();
+        wasLocked = false;
+    }
 
-        List<Entity> potentialTargets = new ArrayList<>();
-        for (Entity entity : nearbyEntities) {
-            if (entity instanceof LivingEntity && entity.isAlive()) {
-                potentialTargets.add(entity);
-            }
+    /**
+     * Handles target lost event
+     */
+    private static void onTargetLost() {
+        LocalPlayer player = Minecraft.getInstance().player;
+        if (player != null) {
+            playSound(player, "target_lost");
+        }
+    }
+
+    /**
+     * Plays sounds based on configuration
+     */
+    private static void playSound(LocalPlayer player, String soundType) {
+        if (!LockOnConfig.areSoundsEnabled()) return;
+
+        boolean shouldPlay = false;
+        switch (soundType) {
+            case "lock_on":
+                shouldPlay = LockOnConfig.playLockOnSound();
+                break;
+            case "target_switch":
+                shouldPlay = LockOnConfig.playTargetSwitchSound();
+                break;
+            case "target_lost":
+                shouldPlay = LockOnConfig.playTargetLostSound();
+                break;
         }
 
-        if (potentialTargets.size() <= 1) return;
-
-        // Find current target index
-        int currentIndex = potentialTargets.indexOf(targetEntity);
-        if (currentIndex == -1) return;
-
-        // Get next target (loop around to the beginning if necessary)
-        int nextIndex = (currentIndex + 1) % potentialTargets.size();
-        targetEntity = potentialTargets.get(nextIndex);
-
-        // Reset smoothing values when switching targets
-        LocalPlayer localPlayer = Minecraft.getInstance().player;
-        if (localPlayer != null) {
-            prevYaw = localPlayer.getYRot();
-            prevPitch = localPlayer.getXRot();
+        if (shouldPlay && player.level != null) {
+            float volume = LockOnConfig.getSoundVolume();
+            player.level.playSound(player, player.blockPosition(), SoundEvents.UI_BUTTON_CLICK,
+                    SoundSource.PLAYERS, volume, 1.0F);
         }
     }
 
@@ -261,5 +587,19 @@ public class LockOnSystem {
      */
     public static Entity getTargetEntity() {
         return targetEntity;
+    }
+
+    /**
+     * Returns the list of potential targets
+     */
+    public static List<Entity> getPotentialTargets() {
+        return new ArrayList<>(potentialTargets);
+    }
+
+    /**
+     * Returns whether a target is currently locked
+     */
+    public static boolean hasTarget() {
+        return targetEntity != null && targetEntity.isAlive();
     }
 }

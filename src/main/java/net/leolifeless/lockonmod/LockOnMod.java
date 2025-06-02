@@ -37,7 +37,7 @@ public class LockOnMod {
         LockOnKeybinds.init();
 
         // Register configuration
-        ModLoadingContext.get().registerConfig(ModConfig.Type.CLIENT, LockOnConfig.CLIENT_SPEC);
+        context.registerConfig(ModConfig.Type.CLIENT, LockOnConfig.CLIENT_SPEC);
 
         // Register ourselves for server and other game events we are interested in
         MinecraftForge.EVENT_BUS.register(this);
@@ -61,7 +61,7 @@ public class LockOnMod {
 
     // Helper method to create resource locations for this mod
     public static ResourceLocation location(String path) {
-        return new ResourceLocation(MOD_ID, path); // Fixed constructor usage
+        return ResourceLocation.fromNamespaceAndPath(MOD_ID, path); // Fixed constructor usage
     }
 
     // You can use EventBusSubscriber to automatically register all static methods in the class annotated with @SubscribeEvent

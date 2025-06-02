@@ -5,8 +5,11 @@ import com.mojang.blaze3d.vertex.*;
 import com.mojang.math.Matrix4f;
 import com.mojang.math.Vector3f;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
 import net.minecraft.client.renderer.GameRenderer;
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.client.event.RenderLevelStageEvent;
 
@@ -16,22 +19,25 @@ public class LockOnRenderer {
     // Animation variables
     private static long lastTime = 0;
     private static float pulseSize = 0.0F;
+    private static float glowSize = 0.0F;
+    private static float rotationAngle = 0.0F;
 
     /**
-     * Renders the lock-on indicator around the target entity
+     * Main rendering method with enhanced features
      */
     public static void renderLockOnIndicator(RenderLevelStageEvent event, Entity target) {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.level == null || minecraft.player == null || target == null) return;
 
-        // Update pulse animation
-        updatePulseAnimation();
+        // Update animations
+        updateAnimations();
 
         // Get the camera position
         Vec3 cameraPos = minecraft.gameRenderer.getMainCamera().getPosition();
 
-        // Get position of the entity (center of their hitbox)
-        Vec3 targetPos = target.position().add(0, target.getBbHeight() / 2, 0);
+        // Get position of the entity with configurable offset
+        float heightOffset = LockOnConfig.getCameraOffset();
+        Vec3 targetPos = target.position().add(0, target.getBbHeight() * heightOffset, 0);
 
         // Calculate relative position
         double x = targetPos.x - cameraPos.x;
@@ -46,7 +52,6 @@ public class LockOnRenderer {
         poseStack.translate(x, y, z);
 
         // Make the indicator always face the camera
-        minecraft.gameRenderer.getMainCamera().rotation();
         poseStack.mulPose(minecraft.gameRenderer.getMainCamera().rotation());
         poseStack.mulPose(Vector3f.YP.rotationDegrees(180f));
 
@@ -57,10 +62,46 @@ public class LockOnRenderer {
         RenderSystem.defaultBlendFunc();
         RenderSystem.setShader(GameRenderer::getPositionColorShader);
 
-        // Draw the lock-on indicator with pulse effect
+        // Calculate dynamic size
         float indicatorSize = LockOnConfig.getIndicatorSize();
-        float animatedSize = indicatorSize + pulseSize;
-        drawLockOnCircle(poseStack, animatedSize, LockOnConfig.getIndicatorColor());
+        float animatedSize = indicatorSize;
+
+        if (LockOnConfig.isPulseEnabled()) {
+            animatedSize += pulseSize;
+        }
+
+        // Calculate dynamic color
+        Color indicatorColor = calculateDynamicColor(target, minecraft.player.distanceTo(target));
+
+        // Render glow effect if enabled
+        if (LockOnConfig.isGlowEnabled()) {
+            renderGlowEffect(poseStack, animatedSize, indicatorColor);
+        }
+
+        // Render main indicator based on type
+        LockOnConfig.IndicatorType type = LockOnConfig.getIndicatorType();
+        switch (type) {
+            case CIRCLE:
+                renderCircleIndicator(poseStack, animatedSize, indicatorColor);
+                break;
+            case CROSSHAIR:
+                renderCrosshairIndicator(poseStack, animatedSize, indicatorColor);
+                break;
+            case DIAMOND:
+                renderDiamondIndicator(poseStack, animatedSize, indicatorColor);
+                break;
+            case SQUARE:
+                renderSquareIndicator(poseStack, animatedSize, indicatorColor);
+                break;
+            case CUSTOM:
+                renderCustomIndicator(poseStack, animatedSize, indicatorColor);
+                break;
+        }
+
+        // Render text information if enabled
+        if (LockOnConfig.showDistance() || LockOnConfig.showHealthBar() || LockOnConfig.showTargetName()) {
+            renderTextInformation(poseStack, target, minecraft);
+        }
 
         // Clean up rendering
         RenderSystem.enableCull();
@@ -71,9 +112,9 @@ public class LockOnRenderer {
     }
 
     /**
-     * Updates the pulse animation effect
+     * Updates all animation effects
      */
-    private static void updatePulseAnimation() {
+    private static void updateAnimations() {
         long currentTime = System.currentTimeMillis();
 
         // First time initialization
@@ -81,34 +122,114 @@ public class LockOnRenderer {
             lastTime = currentTime;
         }
 
-        // Calculate pulse effect based on sine wave
-        float pulseSpeed = LockOnConfig.getPulseSpeed();
-        float pulseAmplitude = LockOnConfig.getPulseAmplitude();
-        float time = currentTime / 1000.0F * pulseSpeed;
-        pulseSize = (float) Math.sin(time) * pulseAmplitude;
+        float deltaTime = (currentTime - lastTime) / 1000.0F;
+
+        // Calculate pulse effect
+        if (LockOnConfig.isPulseEnabled()) {
+            float pulseSpeed = LockOnConfig.getPulseSpeed();
+            float pulseAmplitude = LockOnConfig.getPulseAmplitude();
+            float time = currentTime / 1000.0F * pulseSpeed;
+            pulseSize = (float) Math.sin(time) * pulseAmplitude;
+        }
+
+        // Calculate glow effect
+        if (LockOnConfig.isGlowEnabled()) {
+            float glowSpeed = LockOnConfig.getPulseSpeed() * 0.7F;
+            float time = currentTime / 1000.0F * glowSpeed;
+            glowSize = (float) Math.sin(time * 0.5) * LockOnConfig.getGlowIntensity();
+        }
+
+        // Calculate rotation for animated indicators
+        rotationAngle += deltaTime * 45.0F; // 45 degrees per second
+        if (rotationAngle >= 360.0F) {
+            rotationAngle -= 360.0F;
+        }
 
         lastTime = currentTime;
     }
 
     /**
-     * Draws a circular lock-on indicator
+     * Calculates dynamic color based on configuration
      */
-    private static void drawLockOnCircle(PoseStack poseStack, float size, Color color) {
-        // First draw the filled circle
+    private static Color calculateDynamicColor(Entity target, float distance) {
+        Color baseColor = LockOnConfig.getIndicatorColor();
+
+        if (LockOnConfig.isDynamicColorBasedOnHealth() && target instanceof LivingEntity) {
+            LivingEntity living = (LivingEntity) target;
+            float healthPercent = living.getHealth() / living.getMaxHealth();
+
+            // Interpolate from red (low health) to green (high health)
+            int red = (int) (255 * (1 - healthPercent) + baseColor.getRed() * healthPercent);
+            int green = (int) (255 * healthPercent + baseColor.getGreen() * (1 - healthPercent));
+            int blue = baseColor.getBlue();
+
+            baseColor = new Color(Math.min(255, red), Math.min(255, green), blue, baseColor.getAlpha());
+        }
+
+        if (LockOnConfig.isDynamicColorBasedOnDistance()) {
+            float maxDistance = LockOnConfig.getMaxLockOnDistance();
+            float distancePercent = Math.min(1.0F, distance / maxDistance);
+
+            // Interpolate from blue (close) to red (far)
+            int red = (int) (255 * distancePercent + baseColor.getRed() * (1 - distancePercent));
+            int green = baseColor.getGreen();
+            int blue = (int) (255 * (1 - distancePercent) + baseColor.getBlue() * distancePercent);
+
+            baseColor = new Color(Math.min(255, red), green, Math.min(255, blue), baseColor.getAlpha());
+        }
+
+        return baseColor;
+    }
+
+    /**
+     * Renders glow effect around the indicator
+     */
+    private static void renderGlowEffect(PoseStack poseStack, float size, Color color) {
+        float glowRadius = size * (1.5F + glowSize);
+        Color glowColor = new Color(color.getRed(), color.getGreen(), color.getBlue(),
+                Math.max(10, color.getAlpha() / 4));
+
         BufferBuilder bufferBuilder = Tesselator.getInstance().getBuilder();
         Matrix4f matrix = poseStack.last().pose();
 
-        // Start building the filled circle
         bufferBuilder.begin(VertexFormat.Mode.TRIANGLE_FAN, DefaultVertexFormat.POSITION_COLOR);
 
-        // Add center vertex with lower alpha for a gradient effect
+        // Center vertex
+        bufferBuilder.vertex(matrix, 0.0F, 0.0F, 0.0F)
+                .color(glowColor.getRed(), glowColor.getGreen(), glowColor.getBlue(), 0)
+                .endVertex();
+
+        // Glow circle
+        int segments = 24;
+        for (int i = 0; i <= segments; i++) {
+            float angle = (float) (i * 2 * Math.PI / segments);
+            float x = (float) Math.cos(angle) * glowRadius;
+            float y = (float) Math.sin(angle) * glowRadius;
+
+            bufferBuilder.vertex(matrix, x, y, 0.0F)
+                    .color(glowColor.getRed(), glowColor.getGreen(), glowColor.getBlue(), glowColor.getAlpha())
+                    .endVertex();
+        }
+
+        BufferUploader.drawWithShader(bufferBuilder.end());
+    }
+
+    /**
+     * Renders circle indicator (original)
+     */
+    private static void renderCircleIndicator(PoseStack poseStack, float size, Color color) {
+        BufferBuilder bufferBuilder = Tesselator.getInstance().getBuilder();
+        Matrix4f matrix = poseStack.last().pose();
+
+        // Filled circle
+        bufferBuilder.begin(VertexFormat.Mode.TRIANGLE_FAN, DefaultVertexFormat.POSITION_COLOR);
+
         Color centerColor = new Color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha() / 3);
         bufferBuilder.vertex(matrix, 0.0F, 0.0F, 0.0F)
                 .color(centerColor.getRed(), centerColor.getGreen(), centerColor.getBlue(), centerColor.getAlpha())
                 .endVertex();
 
-        // Add vertices to form a circle
-        int segments = 36; // Number of segments for the circle
+        int segments = 36;
         for (int i = 0; i <= segments; i++) {
             float angle = (float) (i * 2 * Math.PI / segments);
             float x = (float) Math.cos(angle) * size;
@@ -119,25 +240,286 @@ public class LockOnRenderer {
                     .endVertex();
         }
 
-        // End building and draw the filled circle
         BufferUploader.drawWithShader(bufferBuilder.end());
 
-        // Draw the outline
-        drawLockOnCircleOutline(poseStack, size, LockOnConfig.getOutlineColor());
+        // Outline
+        renderCircleOutline(poseStack, size, LockOnConfig.getOutlineColor());
     }
 
     /**
-     * Draws the outline of the lock-on circle
+     * Renders crosshair indicator
      */
-    private static void drawLockOnCircleOutline(PoseStack poseStack, float size, Color color) {
+    private static void renderCrosshairIndicator(PoseStack poseStack, float size, Color color) {
         BufferBuilder bufferBuilder = Tesselator.getInstance().getBuilder();
         Matrix4f matrix = poseStack.last().pose();
 
-        // Start building the outline
+        bufferBuilder.begin(VertexFormat.Mode.LINES, DefaultVertexFormat.POSITION_COLOR);
+
+        float thickness = size * 0.1F;
+        float length = size;
+
+        // Horizontal line
+        bufferBuilder.vertex(matrix, -length, -thickness, 0.0F)
+                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
+                .endVertex();
+        bufferBuilder.vertex(matrix, length, -thickness, 0.0F)
+                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
+                .endVertex();
+
+        bufferBuilder.vertex(matrix, -length, thickness, 0.0F)
+                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
+                .endVertex();
+        bufferBuilder.vertex(matrix, length, thickness, 0.0F)
+                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
+                .endVertex();
+
+        // Vertical line
+        bufferBuilder.vertex(matrix, -thickness, -length, 0.0F)
+                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
+                .endVertex();
+        bufferBuilder.vertex(matrix, -thickness, length, 0.0F)
+                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
+                .endVertex();
+
+        bufferBuilder.vertex(matrix, thickness, -length, 0.0F)
+                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
+                .endVertex();
+        bufferBuilder.vertex(matrix, thickness, length, 0.0F)
+                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
+                .endVertex();
+
+        BufferUploader.drawWithShader(bufferBuilder.end());
+    }
+
+    /**
+     * Renders diamond indicator
+     */
+    private static void renderDiamondIndicator(PoseStack poseStack, float size, Color color) {
+        BufferBuilder bufferBuilder = Tesselator.getInstance().getBuilder();
+        Matrix4f matrix = poseStack.last().pose();
+
+        bufferBuilder.begin(VertexFormat.Mode.TRIANGLE_FAN, DefaultVertexFormat.POSITION_COLOR);
+
+        // Center vertex
+        Color centerColor = new Color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha() / 3);
+        bufferBuilder.vertex(matrix, 0.0F, 0.0F, 0.0F)
+                .color(centerColor.getRed(), centerColor.getGreen(), centerColor.getBlue(), centerColor.getAlpha())
+                .endVertex();
+
+        // Diamond vertices
+        bufferBuilder.vertex(matrix, 0.0F, size, 0.0F) // Top
+                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
+                .endVertex();
+        bufferBuilder.vertex(matrix, size, 0.0F, 0.0F) // Right
+                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
+                .endVertex();
+        bufferBuilder.vertex(matrix, 0.0F, -size, 0.0F) // Bottom
+                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
+                .endVertex();
+        bufferBuilder.vertex(matrix, -size, 0.0F, 0.0F) // Left
+                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
+                .endVertex();
+        bufferBuilder.vertex(matrix, 0.0F, size, 0.0F) // Close the shape
+                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
+                .endVertex();
+
+        BufferUploader.drawWithShader(bufferBuilder.end());
+
+        // Diamond outline
+        renderDiamondOutline(poseStack, size, LockOnConfig.getOutlineColor());
+    }
+
+    /**
+     * Renders square indicator
+     */
+    private static void renderSquareIndicator(PoseStack poseStack, float size, Color color) {
+        BufferBuilder bufferBuilder = Tesselator.getInstance().getBuilder();
+        Matrix4f matrix = poseStack.last().pose();
+
+        bufferBuilder.begin(VertexFormat.Mode.TRIANGLE_FAN, DefaultVertexFormat.POSITION_COLOR);
+
+        // Center vertex
+        Color centerColor = new Color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha() / 3);
+        bufferBuilder.vertex(matrix, 0.0F, 0.0F, 0.0F)
+                .color(centerColor.getRed(), centerColor.getGreen(), centerColor.getBlue(), centerColor.getAlpha())
+                .endVertex();
+
+        // Square vertices
+        bufferBuilder.vertex(matrix, -size, -size, 0.0F) // Bottom-left
+                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
+                .endVertex();
+        bufferBuilder.vertex(matrix, size, -size, 0.0F) // Bottom-right
+                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
+                .endVertex();
+        bufferBuilder.vertex(matrix, size, size, 0.0F) // Top-right
+                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
+                .endVertex();
+        bufferBuilder.vertex(matrix, -size, size, 0.0F) // Top-left
+                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
+                .endVertex();
+        bufferBuilder.vertex(matrix, -size, -size, 0.0F) // Close the shape
+                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
+                .endVertex();
+
+        BufferUploader.drawWithShader(bufferBuilder.end());
+
+        // Square outline
+        renderSquareOutline(poseStack, size, LockOnConfig.getOutlineColor());
+    }
+
+    /**
+     * Renders custom animated indicator
+     */
+    private static void renderCustomIndicator(PoseStack poseStack, float size, Color color) {
+        poseStack.pushPose();
+        poseStack.mulPose(Vector3f.ZP.rotationDegrees(rotationAngle));
+
+        BufferBuilder bufferBuilder = Tesselator.getInstance().getBuilder();
+        Matrix4f matrix = poseStack.last().pose();
+
+        bufferBuilder.begin(VertexFormat.Mode.TRIANGLES, DefaultVertexFormat.POSITION_COLOR);
+
+        // Create a custom star-like shape with multiple triangular points
+        int points = 8;
+        float innerRadius = size * 0.4F;
+        float outerRadius = size;
+
+        for (int i = 0; i < points; i++) {
+            float angle1 = (float) (i * 2 * Math.PI / points);
+            float angle2 = (float) ((i + 1) * 2 * Math.PI / points);
+            float midAngle = (angle1 + angle2) / 2;
+
+            // Outer triangle
+            bufferBuilder.vertex(matrix, 0.0F, 0.0F, 0.0F) // Center
+                    .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
+                    .endVertex();
+            bufferBuilder.vertex(matrix,
+                            (float) Math.cos(angle1) * innerRadius,
+                            (float) Math.sin(angle1) * innerRadius, 0.0F)
+                    .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
+                    .endVertex();
+            bufferBuilder.vertex(matrix,
+                            (float) Math.cos(midAngle) * outerRadius,
+                            (float) Math.sin(midAngle) * outerRadius, 0.0F)
+                    .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
+                    .endVertex();
+
+            // Inner triangle
+            bufferBuilder.vertex(matrix, 0.0F, 0.0F, 0.0F) // Center
+                    .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
+                    .endVertex();
+            bufferBuilder.vertex(matrix,
+                            (float) Math.cos(midAngle) * outerRadius,
+                            (float) Math.sin(midAngle) * outerRadius, 0.0F)
+                    .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
+                    .endVertex();
+            bufferBuilder.vertex(matrix,
+                            (float) Math.cos(angle2) * innerRadius,
+                            (float) Math.sin(angle2) * innerRadius, 0.0F)
+                    .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
+                    .endVertex();
+        }
+
+        BufferUploader.drawWithShader(bufferBuilder.end());
+        poseStack.popPose();
+    }
+
+    /**
+     * Renders text information about the target
+     */
+    private static void renderTextInformation(PoseStack poseStack, Entity target, Minecraft minecraft) {
+        Font font = minecraft.font;
+        poseStack.pushPose();
+
+        // Move text slightly below the indicator
+        poseStack.translate(0, -LockOnConfig.getIndicatorSize() * 2, 0);
+        poseStack.scale(0.025F, -0.025F, 0.025F);
+
+        Color textColor = LockOnConfig.getTextColor();
+        int colorInt = (textColor.getAlpha() << 24) |
+                (textColor.getRed() << 16) |
+                (textColor.getGreen() << 8) |
+                textColor.getBlue();
+
+        float yOffset = 0;
+
+        // Show target name
+        if (LockOnConfig.showTargetName()) {
+            String name = target.getDisplayName().getString();
+            int nameWidth = font.width(name);
+            font.draw(poseStack, name, -nameWidth / 2F, yOffset, colorInt);
+            yOffset += 12;
+        }
+
+        // Show distance
+        if (LockOnConfig.showDistance()) {
+            float distance = minecraft.player.distanceTo(target);
+            String distanceText;
+
+            if (LockOnConfig.getDistanceUnit() == LockOnConfig.DistanceUnit.METERS) {
+                distanceText = String.format("%.1fm", distance);
+            } else {
+                distanceText = String.format("%.1f blocks", distance);
+            }
+
+            int distanceWidth = font.width(distanceText);
+            font.draw(poseStack, distanceText, -distanceWidth / 2F, yOffset, colorInt);
+            yOffset += 12;
+        }
+
+        // Show health bar
+        if (LockOnConfig.showHealthBar() && target instanceof LivingEntity) {
+            LivingEntity living = (LivingEntity) target;
+            float healthPercent = living.getHealth() / living.getMaxHealth();
+
+            String healthText = String.format("%.0f/%.0f HP", living.getHealth(), living.getMaxHealth());
+            int healthWidth = font.width(healthText);
+            font.draw(poseStack, healthText, -healthWidth / 2F, yOffset, colorInt);
+
+            // Draw health bar
+            yOffset += 12;
+            renderHealthBar(poseStack, healthPercent, 50, 4);
+        }
+
+        poseStack.popPose();
+    }
+
+    /**
+     * Renders a health bar
+     */
+    private static void renderHealthBar(PoseStack poseStack, float healthPercent, int width, int height) {
+        BufferBuilder bufferBuilder = Tesselator.getInstance().getBuilder();
+        Matrix4f matrix = poseStack.last().pose();
+
+        bufferBuilder.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
+
+        // Background (dark)
+        bufferBuilder.vertex(matrix, -width/2F, 0, 0).color(50, 50, 50, 200).endVertex();
+        bufferBuilder.vertex(matrix, width/2F, 0, 0).color(50, 50, 50, 200).endVertex();
+        bufferBuilder.vertex(matrix, width/2F, height, 0).color(50, 50, 50, 200).endVertex();
+        bufferBuilder.vertex(matrix, -width/2F, height, 0).color(50, 50, 50, 200).endVertex();
+
+        // Health fill
+        float healthWidth = width * healthPercent;
+        int healthRed = (int) (255 * (1 - healthPercent));
+        int healthGreen = (int) (255 * healthPercent);
+
+        bufferBuilder.vertex(matrix, -width/2F, 0, 0).color(healthRed, healthGreen, 0, 255).endVertex();
+        bufferBuilder.vertex(matrix, -width/2F + healthWidth, 0, 0).color(healthRed, healthGreen, 0, 255).endVertex();
+        bufferBuilder.vertex(matrix, -width/2F + healthWidth, height, 0).color(healthRed, healthGreen, 0, 255).endVertex();
+        bufferBuilder.vertex(matrix, -width/2F, height, 0).color(healthRed, healthGreen, 0, 255).endVertex();
+
+        BufferUploader.drawWithShader(bufferBuilder.end());
+    }
+
+    // Outline rendering methods
+    private static void renderCircleOutline(PoseStack poseStack, float size, Color color) {
+        BufferBuilder bufferBuilder = Tesselator.getInstance().getBuilder();
+        Matrix4f matrix = poseStack.last().pose();
+
         bufferBuilder.begin(VertexFormat.Mode.LINE_STRIP, DefaultVertexFormat.POSITION_COLOR);
 
-        // Add vertices to form a circle outline
-        int segments = 36; // More segments for smoother outline
+        int segments = 36;
         for (int i = 0; i <= segments; i++) {
             float angle = (float) (i * 2 * Math.PI / segments);
             float x = (float) Math.cos(angle) * size;
@@ -148,22 +530,35 @@ public class LockOnRenderer {
                     .endVertex();
         }
 
-        // End building and draw the outline
         BufferUploader.drawWithShader(bufferBuilder.end());
+    }
 
-        // Draw a second, slightly larger outline for better visibility
-        float outerSize = size * 1.1F;
+    private static void renderDiamondOutline(PoseStack poseStack, float size, Color color) {
+        BufferBuilder bufferBuilder = Tesselator.getInstance().getBuilder();
+        Matrix4f matrix = poseStack.last().pose();
+
         bufferBuilder.begin(VertexFormat.Mode.LINE_STRIP, DefaultVertexFormat.POSITION_COLOR);
 
-        for (int i = 0; i <= segments; i++) {
-            float angle = (float) (i * 2 * Math.PI / segments);
-            float x = (float) Math.cos(angle) * outerSize;
-            float y = (float) Math.sin(angle) * outerSize;
+        bufferBuilder.vertex(matrix, 0.0F, size, 0.0F).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha()).endVertex();
+        bufferBuilder.vertex(matrix, size, 0.0F, 0.0F).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha()).endVertex();
+        bufferBuilder.vertex(matrix, 0.0F, -size, 0.0F).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha()).endVertex();
+        bufferBuilder.vertex(matrix, -size, 0.0F, 0.0F).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha()).endVertex();
+        bufferBuilder.vertex(matrix, 0.0F, size, 0.0F).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha()).endVertex();
 
-            bufferBuilder.vertex(matrix, x, y, 0.0F)
-                    .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha() / 2)
-                    .endVertex();
-        }
+        BufferUploader.drawWithShader(bufferBuilder.end());
+    }
+
+    private static void renderSquareOutline(PoseStack poseStack, float size, Color color) {
+        BufferBuilder bufferBuilder = Tesselator.getInstance().getBuilder();
+        Matrix4f matrix = poseStack.last().pose();
+
+        bufferBuilder.begin(VertexFormat.Mode.LINE_STRIP, DefaultVertexFormat.POSITION_COLOR);
+
+        bufferBuilder.vertex(matrix, -size, -size, 0.0F).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha()).endVertex();
+        bufferBuilder.vertex(matrix, size, -size, 0.0F).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha()).endVertex();
+        bufferBuilder.vertex(matrix, size, size, 0.0F).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha()).endVertex();
+        bufferBuilder.vertex(matrix, -size, size, 0.0F).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha()).endVertex();
+        bufferBuilder.vertex(matrix, -size, -size, 0.0F).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha()).endVertex();
 
         BufferUploader.drawWithShader(bufferBuilder.end());
     }
