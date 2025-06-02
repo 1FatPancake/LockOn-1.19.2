@@ -5,9 +5,7 @@ import com.mojang.blaze3d.vertex.*;
 import com.mojang.math.Matrix4f;
 import com.mojang.math.Vector3f;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.Font;
 import net.minecraft.client.renderer.GameRenderer;
-import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.phys.Vec3;
@@ -23,7 +21,7 @@ public class LockOnRenderer {
     private static float rotationAngle = 0.0F;
 
     /**
-     * Main rendering method with enhanced features
+     * Main rendering method with enhanced features - now only renders the indicator
      */
     public static void renderLockOnIndicator(RenderLevelStageEvent event, Entity target) {
         Minecraft minecraft = Minecraft.getInstance();
@@ -98,10 +96,7 @@ public class LockOnRenderer {
                 break;
         }
 
-        // Render text information if enabled
-        if (LockOnConfig.showDistance() || LockOnConfig.showHealthBar() || LockOnConfig.showTargetName()) {
-            renderTextInformation(poseStack, target, minecraft);
-        }
+        // Text information is now handled by LockOnHudRenderer instead of 3D text
 
         // Clean up rendering
         RenderSystem.enableCull();
@@ -422,94 +417,6 @@ public class LockOnRenderer {
 
         BufferUploader.drawWithShader(bufferBuilder.end());
         poseStack.popPose();
-    }
-
-    /**
-     * Renders text information about the target
-     */
-    private static void renderTextInformation(PoseStack poseStack, Entity target, Minecraft minecraft) {
-        Font font = minecraft.font;
-        poseStack.pushPose();
-
-        // Move text slightly below the indicator
-        poseStack.translate(0, -LockOnConfig.getIndicatorSize() * 2, 0);
-        poseStack.scale(0.025F, -0.025F, 0.025F);
-
-        Color textColor = LockOnConfig.getTextColor();
-        int colorInt = (textColor.getAlpha() << 24) |
-                (textColor.getRed() << 16) |
-                (textColor.getGreen() << 8) |
-                textColor.getBlue();
-
-        float yOffset = 0;
-
-        // Show target name
-        if (LockOnConfig.showTargetName()) {
-            String name = target.getDisplayName().getString();
-            int nameWidth = font.width(name);
-            font.draw(poseStack, name, -nameWidth / 2F, yOffset, colorInt);
-            yOffset += 12;
-        }
-
-        // Show distance
-        if (LockOnConfig.showDistance()) {
-            float distance = minecraft.player.distanceTo(target);
-            String distanceText;
-
-            if (LockOnConfig.getDistanceUnit() == LockOnConfig.DistanceUnit.METERS) {
-                distanceText = String.format("%.1fm", distance);
-            } else {
-                distanceText = String.format("%.1f blocks", distance);
-            }
-
-            int distanceWidth = font.width(distanceText);
-            font.draw(poseStack, distanceText, -distanceWidth / 2F, yOffset, colorInt);
-            yOffset += 12;
-        }
-
-        // Show health bar
-        if (LockOnConfig.showHealthBar() && target instanceof LivingEntity) {
-            LivingEntity living = (LivingEntity) target;
-            float healthPercent = living.getHealth() / living.getMaxHealth();
-
-            String healthText = String.format("%.0f/%.0f HP", living.getHealth(), living.getMaxHealth());
-            int healthWidth = font.width(healthText);
-            font.draw(poseStack, healthText, -healthWidth / 2F, yOffset, colorInt);
-
-            // Draw health bar
-            yOffset += 12;
-            renderHealthBar(poseStack, healthPercent, 50, 4);
-        }
-
-        poseStack.popPose();
-    }
-
-    /**
-     * Renders a health bar
-     */
-    private static void renderHealthBar(PoseStack poseStack, float healthPercent, int width, int height) {
-        BufferBuilder bufferBuilder = Tesselator.getInstance().getBuilder();
-        Matrix4f matrix = poseStack.last().pose();
-
-        bufferBuilder.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
-
-        // Background (dark)
-        bufferBuilder.vertex(matrix, -width/2F, 0, 0).color(50, 50, 50, 200).endVertex();
-        bufferBuilder.vertex(matrix, width/2F, 0, 0).color(50, 50, 50, 200).endVertex();
-        bufferBuilder.vertex(matrix, width/2F, height, 0).color(50, 50, 50, 200).endVertex();
-        bufferBuilder.vertex(matrix, -width/2F, height, 0).color(50, 50, 50, 200).endVertex();
-
-        // Health fill
-        float healthWidth = width * healthPercent;
-        int healthRed = (int) (255 * (1 - healthPercent));
-        int healthGreen = (int) (255 * healthPercent);
-
-        bufferBuilder.vertex(matrix, -width/2F, 0, 0).color(healthRed, healthGreen, 0, 255).endVertex();
-        bufferBuilder.vertex(matrix, -width/2F + healthWidth, 0, 0).color(healthRed, healthGreen, 0, 255).endVertex();
-        bufferBuilder.vertex(matrix, -width/2F + healthWidth, height, 0).color(healthRed, healthGreen, 0, 255).endVertex();
-        bufferBuilder.vertex(matrix, -width/2F, height, 0).color(healthRed, healthGreen, 0, 255).endVertex();
-
-        BufferUploader.drawWithShader(bufferBuilder.end());
     }
 
     // Outline rendering methods
