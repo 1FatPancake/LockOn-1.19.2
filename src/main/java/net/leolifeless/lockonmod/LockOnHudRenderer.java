@@ -22,11 +22,6 @@ public class LockOnHudRenderer {
 
     @SubscribeEvent
     public static void onRenderGuiOverlay(RenderGuiOverlayEvent.Post event) {
-        // Only render on the main HUD overlay
-        if (!event.getOverlay().id().toString().equals("minecraft:hotbar")) {
-            return;
-        }
-
         Entity target = LockOnSystem.getTargetEntity();
         if (target == null || !target.isAlive()) {
             return;
@@ -43,14 +38,17 @@ public class LockOnHudRenderer {
         int screenWidth = minecraft.getWindow().getGuiScaledWidth();
         int screenHeight = minecraft.getWindow().getGuiScaledHeight();
 
-        // Position the HUD elements in the top-right corner
-        int hudX = screenWidth - 200; // 200 pixels from right edge
+        // Position the HUD elements in the top-center of the screen
+        int hudWidth = 200;
+        int hudX = (screenWidth - hudWidth) / 2; // Center horizontally
         int hudY = 20; // 20 pixels from top
         int lineHeight = 12;
         int currentY = hudY;
 
         // Background panel
-        renderHudBackground(poseStack, hudX - 10, hudY - 5, 190, calculateHudHeight(target));
+        int panelWidth = hudWidth;
+        int panelHeight = calculateHudHeight(target);
+        renderHudBackground(poseStack, hudX - 10, hudY - 5, panelWidth, panelHeight);
 
         // Get text color from config
         Color textColor = LockOnConfig.getTextColor();
@@ -86,12 +84,11 @@ public class LockOnHudRenderer {
             currentY += lineHeight;
         }
 
-        // Show health information and bar
+        // Show health information (text only)
         if (LockOnConfig.showHealthBar() && target instanceof LivingEntity) {
             LivingEntity living = (LivingEntity) target;
             float health = living.getHealth();
             float maxHealth = living.getMaxHealth();
-            float healthPercent = health / maxHealth;
 
             String healthLabel = "Health: ";
             String healthText = String.format("%.0f/%.0f HP", health, maxHealth);
@@ -99,10 +96,6 @@ public class LockOnHudRenderer {
             font.draw(poseStack, healthLabel, hudX, currentY, 0xFFFFFF);
             font.draw(poseStack, healthText, hudX + font.width(healthLabel), currentY, colorInt);
             currentY += lineHeight;
-
-            // Render health bar
-            renderHealthBar(poseStack, hudX, currentY, 150, 8, healthPercent);
-            currentY += 12; // Space for health bar
         }
     }
 
@@ -164,87 +157,6 @@ public class LockOnHudRenderer {
     }
 
     /**
-     * Renders a health bar on the HUD (1.19.2 compatible)
-     */
-    private static void renderHealthBar(PoseStack poseStack, int x, int y, int width, int height, float healthPercent) {
-        RenderSystem.setShader(GameRenderer::getPositionColorShader);
-        RenderSystem.enableBlend();
-        RenderSystem.defaultBlendFunc();
-        RenderSystem.disableTexture();
-
-        Matrix4f matrix = poseStack.last().pose();
-        BufferBuilder bufferBuilder = Tesselator.getInstance().getBuilder();
-
-        // Background (dark red)
-        bufferBuilder.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
-        bufferBuilder.vertex(matrix, x, y, 0).color(51, 0, 0, 255).endVertex();
-        bufferBuilder.vertex(matrix, x + width, y, 0).color(51, 0, 0, 255).endVertex();
-        bufferBuilder.vertex(matrix, x + width, y + height, 0).color(51, 0, 0, 255).endVertex();
-        bufferBuilder.vertex(matrix, x, y + height, 0).color(51, 0, 0, 255).endVertex();
-        BufferUploader.drawWithShader(bufferBuilder.end());
-
-        // Health fill
-        int healthWidth = (int) (width * healthPercent);
-
-        // Color based on health percentage
-        int healthRed, healthGreen, healthBlue;
-        if (healthPercent > 0.6f) {
-            // Green when healthy
-            healthRed = 0; healthGreen = 170; healthBlue = 0;
-        } else if (healthPercent > 0.3f) {
-            // Yellow when moderately damaged
-            healthRed = 255; healthGreen = 170; healthBlue = 0;
-        } else {
-            // Red when low health
-            healthRed = 170; healthGreen = 0; healthBlue = 0;
-        }
-
-        if (healthWidth > 0) {
-            bufferBuilder.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
-            bufferBuilder.vertex(matrix, x, y, 0).color(healthRed, healthGreen, healthBlue, 255).endVertex();
-            bufferBuilder.vertex(matrix, x + healthWidth, y, 0).color(healthRed, healthGreen, healthBlue, 255).endVertex();
-            bufferBuilder.vertex(matrix, x + healthWidth, y + height, 0).color(healthRed, healthGreen, healthBlue, 255).endVertex();
-            bufferBuilder.vertex(matrix, x, y + height, 0).color(healthRed, healthGreen, healthBlue, 255).endVertex();
-            BufferUploader.drawWithShader(bufferBuilder.end());
-        }
-
-        // Border - Top
-        bufferBuilder.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
-        bufferBuilder.vertex(matrix, x, y, 0).color(255, 255, 255, 255).endVertex();
-        bufferBuilder.vertex(matrix, x + width, y, 0).color(255, 255, 255, 255).endVertex();
-        bufferBuilder.vertex(matrix, x + width, y + 1, 0).color(255, 255, 255, 255).endVertex();
-        bufferBuilder.vertex(matrix, x, y + 1, 0).color(255, 255, 255, 255).endVertex();
-        BufferUploader.drawWithShader(bufferBuilder.end());
-
-        // Border - Bottom
-        bufferBuilder.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
-        bufferBuilder.vertex(matrix, x, y + height - 1, 0).color(255, 255, 255, 255).endVertex();
-        bufferBuilder.vertex(matrix, x + width, y + height - 1, 0).color(255, 255, 255, 255).endVertex();
-        bufferBuilder.vertex(matrix, x + width, y + height, 0).color(255, 255, 255, 255).endVertex();
-        bufferBuilder.vertex(matrix, x, y + height, 0).color(255, 255, 255, 255).endVertex();
-        BufferUploader.drawWithShader(bufferBuilder.end());
-
-        // Border - Left
-        bufferBuilder.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
-        bufferBuilder.vertex(matrix, x, y, 0).color(255, 255, 255, 255).endVertex();
-        bufferBuilder.vertex(matrix, x + 1, y, 0).color(255, 255, 255, 255).endVertex();
-        bufferBuilder.vertex(matrix, x + 1, y + height, 0).color(255, 255, 255, 255).endVertex();
-        bufferBuilder.vertex(matrix, x, y + height, 0).color(255, 255, 255, 255).endVertex();
-        BufferUploader.drawWithShader(bufferBuilder.end());
-
-        // Border - Right
-        bufferBuilder.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
-        bufferBuilder.vertex(matrix, x + width - 1, y, 0).color(255, 255, 255, 255).endVertex();
-        bufferBuilder.vertex(matrix, x + width, y, 0).color(255, 255, 255, 255).endVertex();
-        bufferBuilder.vertex(matrix, x + width, y + height, 0).color(255, 255, 255, 255).endVertex();
-        bufferBuilder.vertex(matrix, x + width - 1, y + height, 0).color(255, 255, 255, 255).endVertex();
-        BufferUploader.drawWithShader(bufferBuilder.end());
-
-        RenderSystem.enableTexture();
-        RenderSystem.disableBlend();
-    }
-
-    /**
      * Calculates the height needed for the HUD panel
      */
     private static int calculateHudHeight(Entity target) {
@@ -260,7 +172,7 @@ public class LockOnHudRenderer {
         }
 
         if (LockOnConfig.showHealthBar() && target instanceof LivingEntity) {
-            height += lineHeight + 12; // Text + health bar
+            height += lineHeight; // Just text, no health bar
         }
 
         return height;
