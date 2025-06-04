@@ -47,3 +47,24 @@ A comprehensive lock-on targeting system for Minecraft 1.19.2 that provides smoo
 | `Alt + A` | Toggle Passive Mob Targeting |
 | `Ctrl + I` | Toggle Indicator Visibility |
 | `Ctrl + V` | Cycle Indicator Type |
+
+
+🐛 Troubleshooting
+Common Issues
+Mod not working:
+
+Verify Minecraft 1.19.2 with Forge 43.5.0+
+Check mod is in the correct mods folder
+Ensure no conflicting mods
+
+Poor performance:
+
+Reduce updateFrequency in the config
+Lower maxTargetsToSearch
+Disable visual effects if needed
+
+Targeting is not working:
+
+Check entity filters in the configuration
+Verify line of sight settings
+Ensure you're within max distance
