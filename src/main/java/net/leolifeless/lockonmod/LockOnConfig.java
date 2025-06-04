@@ -80,6 +80,8 @@ public class LockOnConfig {
         public final ForgeConfigSpec.IntValue textColorAlpha;
         public final ForgeConfigSpec.BooleanValue dynamicColorBasedOnHealth;
         public final ForgeConfigSpec.BooleanValue dynamicColorBasedOnDistance;
+        public final ForgeConfigSpec.IntValue customIndicatorVariant;
+
 
         // === TARGET FILTER SETTINGS ===
         public final ForgeConfigSpec.BooleanValue targetPlayers;
@@ -217,6 +219,10 @@ public class LockOnConfig {
             indicatorType = builder
                     .comment("Type of lock-on indicator: CIRCLE, CROSSHAIR, DIAMOND, SQUARE, CUSTOM")
                     .defineEnum("indicatorType", IndicatorType.CIRCLE);
+
+            customIndicatorVariant = builder
+                    .comment("Which custom indicator variant to use (0-2)")
+                    .defineInRange("customIndicatorVariant", 0, 0, 2);
 
             indicatorSize = builder
                     .comment("Size of the lock-on indicator")

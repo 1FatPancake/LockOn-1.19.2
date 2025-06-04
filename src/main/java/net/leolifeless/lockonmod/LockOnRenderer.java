@@ -6,6 +6,7 @@ import com.mojang.math.Matrix4f;
 import com.mojang.math.Vector3f;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GameRenderer;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.phys.Vec3;
@@ -13,12 +14,18 @@ import net.minecraftforge.client.event.RenderLevelStageEvent;
 
 import java.awt.*;
 
+import static net.leolifeless.lockonmod.LockOnMod.MOD_ID;
+
 public class LockOnRenderer {
     // Animation variables
     private static long lastTime = 0;
     private static float pulseSize = 0.0F;
     private static float glowSize = 0.0F;
     private static float rotationAngle = 0.0F;
+
+    // Custom texture for the indicator
+    private static final ResourceLocation CUSTOM_INDICATOR_TEXTURE =
+            ResourceLocation.fromNamespaceAndPath(MOD_ID, "textures/gui/custom_indicator.png");
 
     /**
      * Main rendering method with enhanced features - now only renders the indicator
@@ -58,7 +65,6 @@ public class LockOnRenderer {
         RenderSystem.disableCull();
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
-        RenderSystem.setShader(GameRenderer::getPositionColorShader);
 
         // Calculate dynamic size
         float indicatorSize = LockOnConfig.getIndicatorSize();
@@ -96,12 +102,62 @@ public class LockOnRenderer {
                 break;
         }
 
-        // Text information is now handled by LockOnHudRenderer instead of 3D text
-
         // Clean up rendering
         RenderSystem.enableCull();
         RenderSystem.enableDepthTest();
         RenderSystem.disableBlend();
+
+        poseStack.popPose();
+    }
+
+    /**
+     * Renders custom image indicator with rotation and color tinting
+     */
+    private static void renderCustomIndicator(PoseStack poseStack, float size, Color color) {
+        poseStack.pushPose();
+
+        // Apply rotation animation
+        poseStack.mulPose(Vector3f.ZP.rotationDegrees(rotationAngle));
+
+        // Set up texture rendering
+        RenderSystem.setShader(GameRenderer::getPositionTexColorShader);
+        RenderSystem.setShaderTexture(0, CUSTOM_INDICATOR_TEXTURE);
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+
+        BufferBuilder bufferBuilder = Tesselator.getInstance().getBuilder();
+        Matrix4f matrix = poseStack.last().pose();
+
+        bufferBuilder.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX_COLOR);
+
+        // Define the quad vertices for the texture
+        float halfSize = size;
+
+        // Bottom-left
+        bufferBuilder.vertex(matrix, -halfSize, -halfSize, 0.0F)
+                .uv(0.0F, 1.0F)  // Bottom-left UV
+                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
+                .endVertex();
+
+        // Bottom-right
+        bufferBuilder.vertex(matrix, halfSize, -halfSize, 0.0F)
+                .uv(1.0F, 1.0F)  // Bottom-right UV
+                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
+                .endVertex();
+
+        // Top-right
+        bufferBuilder.vertex(matrix, halfSize, halfSize, 0.0F)
+                .uv(1.0F, 0.0F)  // Top-right UV
+                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
+                .endVertex();
+
+        // Top-left
+        bufferBuilder.vertex(matrix, -halfSize, halfSize, 0.0F)
+                .uv(0.0F, 0.0F)  // Top-left UV
+                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
+                .endVertex();
+
+        BufferUploader.drawWithShader(bufferBuilder.end());
 
         poseStack.popPose();
     }
@@ -180,6 +236,8 @@ public class LockOnRenderer {
      * Renders glow effect around the indicator
      */
     private static void renderGlowEffect(PoseStack poseStack, float size, Color color) {
+        RenderSystem.setShader(GameRenderer::getPositionColorShader);
+
         float glowRadius = size * (1.5F + glowSize);
         Color glowColor = new Color(color.getRed(), color.getGreen(), color.getBlue(),
                 Math.max(10, color.getAlpha() / 4));
@@ -213,6 +271,8 @@ public class LockOnRenderer {
      * Renders circle indicator (original)
      */
     private static void renderCircleIndicator(PoseStack poseStack, float size, Color color) {
+        RenderSystem.setShader(GameRenderer::getPositionColorShader);
+
         BufferBuilder bufferBuilder = Tesselator.getInstance().getBuilder();
         Matrix4f matrix = poseStack.last().pose();
 
@@ -245,41 +305,41 @@ public class LockOnRenderer {
      * Renders crosshair indicator
      */
     private static void renderCrosshairIndicator(PoseStack poseStack, float size, Color color) {
+        RenderSystem.setShader(GameRenderer::getPositionColorShader);
+
         BufferBuilder bufferBuilder = Tesselator.getInstance().getBuilder();
         Matrix4f matrix = poseStack.last().pose();
 
-        bufferBuilder.begin(VertexFormat.Mode.LINES, DefaultVertexFormat.POSITION_COLOR);
+        bufferBuilder.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
 
         float thickness = size * 0.1F;
         float length = size;
 
-        // Horizontal line
+        // Horizontal bar
         bufferBuilder.vertex(matrix, -length, -thickness, 0.0F)
                 .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
                 .endVertex();
         bufferBuilder.vertex(matrix, length, -thickness, 0.0F)
                 .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
                 .endVertex();
-
-        bufferBuilder.vertex(matrix, -length, thickness, 0.0F)
-                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
-                .endVertex();
         bufferBuilder.vertex(matrix, length, thickness, 0.0F)
                 .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
                 .endVertex();
+        bufferBuilder.vertex(matrix, -length, thickness, 0.0F)
+                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
+                .endVertex();
 
-        // Vertical line
+        // Vertical bar
         bufferBuilder.vertex(matrix, -thickness, -length, 0.0F)
                 .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
                 .endVertex();
-        bufferBuilder.vertex(matrix, -thickness, length, 0.0F)
-                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
-                .endVertex();
-
         bufferBuilder.vertex(matrix, thickness, -length, 0.0F)
                 .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
                 .endVertex();
         bufferBuilder.vertex(matrix, thickness, length, 0.0F)
+                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
+                .endVertex();
+        bufferBuilder.vertex(matrix, -thickness, length, 0.0F)
                 .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
                 .endVertex();
 
@@ -290,6 +350,8 @@ public class LockOnRenderer {
      * Renders diamond indicator
      */
     private static void renderDiamondIndicator(PoseStack poseStack, float size, Color color) {
+        RenderSystem.setShader(GameRenderer::getPositionColorShader);
+
         BufferBuilder bufferBuilder = Tesselator.getInstance().getBuilder();
         Matrix4f matrix = poseStack.last().pose();
 
@@ -328,6 +390,8 @@ public class LockOnRenderer {
      * Renders square indicator
      */
     private static void renderSquareIndicator(PoseStack poseStack, float size, Color color) {
+        RenderSystem.setShader(GameRenderer::getPositionColorShader);
+
         BufferBuilder bufferBuilder = Tesselator.getInstance().getBuilder();
         Matrix4f matrix = poseStack.last().pose();
 
@@ -360,63 +424,6 @@ public class LockOnRenderer {
 
         // Square outline
         renderSquareOutline(poseStack, size, LockOnConfig.getOutlineColor());
-    }
-
-    /**
-     * Renders custom animated indicator
-     */
-    private static void renderCustomIndicator(PoseStack poseStack, float size, Color color) {
-        poseStack.pushPose();
-        poseStack.mulPose(Vector3f.ZP.rotationDegrees(rotationAngle));
-
-        BufferBuilder bufferBuilder = Tesselator.getInstance().getBuilder();
-        Matrix4f matrix = poseStack.last().pose();
-
-        bufferBuilder.begin(VertexFormat.Mode.TRIANGLES, DefaultVertexFormat.POSITION_COLOR);
-
-        // Create a custom star-like shape with multiple triangular points
-        int points = 8;
-        float innerRadius = size * 0.4F;
-        float outerRadius = size;
-
-        for (int i = 0; i < points; i++) {
-            float angle1 = (float) (i * 2 * Math.PI / points);
-            float angle2 = (float) ((i + 1) * 2 * Math.PI / points);
-            float midAngle = (angle1 + angle2) / 2;
-
-            // Outer triangle
-            bufferBuilder.vertex(matrix, 0.0F, 0.0F, 0.0F) // Center
-                    .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
-                    .endVertex();
-            bufferBuilder.vertex(matrix,
-                            (float) Math.cos(angle1) * innerRadius,
-                            (float) Math.sin(angle1) * innerRadius, 0.0F)
-                    .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
-                    .endVertex();
-            bufferBuilder.vertex(matrix,
-                            (float) Math.cos(midAngle) * outerRadius,
-                            (float) Math.sin(midAngle) * outerRadius, 0.0F)
-                    .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
-                    .endVertex();
-
-            // Inner triangle
-            bufferBuilder.vertex(matrix, 0.0F, 0.0F, 0.0F) // Center
-                    .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
-                    .endVertex();
-            bufferBuilder.vertex(matrix,
-                            (float) Math.cos(midAngle) * outerRadius,
-                            (float) Math.sin(midAngle) * outerRadius, 0.0F)
-                    .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
-                    .endVertex();
-            bufferBuilder.vertex(matrix,
-                            (float) Math.cos(angle2) * innerRadius,
-                            (float) Math.sin(angle2) * innerRadius, 0.0F)
-                    .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
-                    .endVertex();
-        }
-
-        BufferUploader.drawWithShader(bufferBuilder.end());
-        poseStack.popPose();
     }
 
     // Outline rendering methods
