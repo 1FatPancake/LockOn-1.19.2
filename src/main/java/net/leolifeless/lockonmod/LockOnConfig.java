@@ -64,6 +64,8 @@ public class LockOnConfig {
         public final ForgeConfigSpec.BooleanValue showHealthBar;
         public final ForgeConfigSpec.BooleanValue showTargetName;
         public final ForgeConfigSpec.EnumValue<DistanceUnit> distanceUnit;
+        public final ForgeConfigSpec.ConfigValue<String> customIndicatorName;
+        public final ForgeConfigSpec.BooleanValue enableCustomIndicatorCycling;
 
         // === COLOR SETTINGS ===
         public final ForgeConfigSpec.IntValue indicatorColorRed;
@@ -223,6 +225,14 @@ public class LockOnConfig {
             customIndicatorVariant = builder
                     .comment("Which custom indicator variant to use (0-2)")
                     .defineInRange("customIndicatorVariant", 0, 0, 2);
+
+            customIndicatorName = builder
+                    .comment("Name of the custom indicator to use when indicatorType is CUSTOM")
+                    .define("customIndicatorName", "default");
+
+            enableCustomIndicatorCycling = builder
+                    .comment("Enable cycling through custom indicators with keybind")
+                    .define("enableCustomIndicatorCycling", true);
 
             indicatorSize = builder
                     .comment("Size of the lock-on indicator")
@@ -470,6 +480,9 @@ public class LockOnConfig {
     public static float getCameraOffset() { return CLIENT.cameraOffset.get().floatValue(); }
 
     public static IndicatorType getIndicatorType() { return CLIENT.indicatorType.get(); }
+    public static String getCustomIndicatorName() {return CLIENT.customIndicatorName.get();}
+    public static boolean isCustomIndicatorCyclingEnabled() {return CLIENT.enableCustomIndicatorCycling.get();}
+    public static void setCustomIndicatorName(String name) {CLIENT.customIndicatorName.set(name);}
     public static float getIndicatorSize() { return CLIENT.indicatorSize.get().floatValue(); }
     public static float getPulseSpeed() { return CLIENT.pulseSpeed.get().floatValue(); }
     public static float getPulseAmplitude() { return CLIENT.pulseAmplitude.get().floatValue(); }

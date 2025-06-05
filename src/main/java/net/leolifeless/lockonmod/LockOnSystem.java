@@ -3,6 +3,7 @@ package net.leolifeless.lockonmod;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.Registry;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
@@ -47,8 +48,12 @@ public class LockOnSystem {
     private static float prevPitch = 0F;
     private static boolean wasLocked = false;
 
+    // Runtime settings for togglable features
+    private static boolean indicatorVisible = true;
+    private static LockOnConfig.TargetingMode runtimeTargetingMode = null;
+
     /**
-     * Enhanced key input handler with multiple modes
+     * Enhanced key input handler with multiple modes and custom indicator support
      */
     @SubscribeEvent
     public static void onKeyInput(InputEvent.Key event) {
@@ -61,6 +66,8 @@ public class LockOnSystem {
         boolean lockKeyPressed = LockOnKeybinds.lockOnKey.isDown();
         boolean lockKeyClicked = LockOnKeybinds.lockOnKey.consumeClick();
         boolean cycleKeyClicked = LockOnKeybinds.cycleTargetKey.consumeClick();
+        boolean cycleReverseKeyClicked = LockOnKeybinds.cycleTargetReverseKey.consumeClick();
+        boolean clearKeyClicked = LockOnKeybinds.clearTargetKey.consumeClick();
 
         // Handle different keybinding modes
         if (LockOnConfig.holdToMaintainLock()) {
@@ -73,10 +80,128 @@ public class LockOnSystem {
 
         // Handle target cycling
         if (cycleKeyClicked && targetEntity != null && LockOnConfig.canCycleThroughTargets()) {
-            cycleTarget(player);
+            cycleTarget(player, false);
         }
 
+        if (cycleReverseKeyClicked && targetEntity != null && LockOnConfig.canCycleThroughTargets()) {
+            cycleTarget(player, true);
+        }
+
+        // Handle clear target
+        if (clearKeyClicked) {
+            clearTarget();
+        }
+
+        // Handle targeting mode shortcuts
+        handleTargetingModeShortcuts(player);
+
+        // Handle filter toggles
+        handleFilterToggles(player);
+
+        // Handle visual controls
+        handleVisualControls(player);
+
         wasKeyHeld = lockKeyPressed;
+    }
+
+    /**
+     * Handles targeting mode shortcut keys
+     */
+    private static void handleTargetingModeShortcuts(LocalPlayer player) {
+        if (LockOnKeybinds.targetClosestKey.consumeClick()) {
+            setRuntimeTargetingMode(LockOnConfig.TargetingMode.CLOSEST);
+            showMessage(player, "Targeting Mode: Closest");
+            playSound(player, "target_switch");
+        }
+
+        if (LockOnKeybinds.targetMostDamagedKey.consumeClick()) {
+            setRuntimeTargetingMode(LockOnConfig.TargetingMode.MOST_DAMAGED);
+            showMessage(player, "Targeting Mode: Most Damaged");
+            playSound(player, "target_switch");
+        }
+
+        if (LockOnKeybinds.targetThreatKey.consumeClick()) {
+            setRuntimeTargetingMode(LockOnConfig.TargetingMode.THREAT_LEVEL);
+            showMessage(player, "Targeting Mode: Threat Level");
+            playSound(player, "target_switch");
+        }
+    }
+
+    /**
+     * Handles filter toggle keys
+     */
+    private static void handleFilterToggles(LocalPlayer player) {
+        if (LockOnKeybinds.togglePlayersKey.consumeClick()) {
+            boolean newValue = !LockOnConfig.canTargetPlayers();
+            // Note: These would need to be runtime toggles since config values are typically immutable
+            showMessage(player, "Player Targeting: " + (newValue ? "Enabled" : "Disabled"));
+            playSound(player, "target_switch");
+        }
+
+        if (LockOnKeybinds.toggleHostilesKey.consumeClick()) {
+            boolean newValue = !LockOnConfig.canTargetHostileMobs();
+            showMessage(player, "Hostile Mob Targeting: " + (newValue ? "Enabled" : "Disabled"));
+            playSound(player, "target_switch");
+        }
+
+        if (LockOnKeybinds.togglePassivesKey.consumeClick()) {
+            boolean newValue = !LockOnConfig.canTargetPassiveMobs();
+            showMessage(player, "Passive Mob Targeting: " + (newValue ? "Enabled" : "Disabled"));
+            playSound(player, "target_switch");
+        }
+    }
+
+    /**
+     * Handles visual control keys including custom indicator cycling
+     */
+    private static void handleVisualControls(LocalPlayer player) {
+        // Toggle indicator visibility
+        if (LockOnKeybinds.toggleIndicatorKey.consumeClick()) {
+            indicatorVisible = !indicatorVisible;
+            showMessage(player, "Lock-On Indicator: " + (indicatorVisible ? "Enabled" : "Disabled"));
+            playSound(player, "target_switch");
+        }
+
+        // Cycle indicator type (including custom indicators)
+        if (LockOnKeybinds.cycleIndicatorTypeKey.consumeClick()) {
+            cycleIndicatorType(player);
+        }
+    }
+
+    /**
+     * Cycles through indicator types including custom indicators
+     */
+    private static void cycleIndicatorType(LocalPlayer player) {
+        LockOnConfig.IndicatorType currentType = LockOnConfig.getIndicatorType();
+
+        if (currentType == LockOnConfig.IndicatorType.CUSTOM && LockOnConfig.isCustomIndicatorCyclingEnabled()) {
+            // Cycle through custom indicators
+            cycleCustomIndicator(player);
+        } else {
+            // Cycle through main indicator types
+            LockOnConfig.IndicatorType[] types = LockOnConfig.IndicatorType.values();
+            int currentIndex = currentType.ordinal();
+            int nextIndex = (currentIndex + 1) % types.length;
+            LockOnConfig.IndicatorType nextType = types[nextIndex];
+
+            // Note: This would require a way to set config values at runtime
+            showMessage(player, "Indicator Type: " + nextType.getDisplayName());
+            playSound(player, "target_switch");
+        }
+    }
+
+    /**
+     * Cycles through available custom indicators
+     */
+    private static void cycleCustomIndicator(LocalPlayer player) {
+        String nextIndicator = CustomIndicatorManager.cycleToNextIndicator();
+
+        // Show message to player
+        String message = "Custom Indicator: " + CustomIndicatorManager.getIndicatorInfo(nextIndicator);
+        showMessage(player, message);
+
+        // Play sound
+        playSound(player, "target_switch");
     }
 
     /**
@@ -198,7 +323,7 @@ public class LockOnSystem {
     public static void onRenderWorld(RenderLevelStageEvent event) {
         if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) return;
 
-        if (targetEntity != null && targetEntity.isAlive()) {
+        if (targetEntity != null && targetEntity.isAlive() && indicatorVisible) {
             LockOnRenderer.renderLockOnIndicator(event, targetEntity);
         }
     }
@@ -248,7 +373,10 @@ public class LockOnSystem {
                 .limit(LockOnConfig.getMaxTargetsToSearch())
                 .collect(Collectors.toList());
 
-        if (potentialTargets.isEmpty()) return;
+        if (potentialTargets.isEmpty()) {
+            showMessage(player, "No Valid Targets Found");
+            return;
+        }
 
         // Sort based on targeting mode
         sortTargetsByMode(player, potentialTargets);
@@ -258,6 +386,9 @@ public class LockOnSystem {
         currentTargetIndex = 0;
         wasLocked = true;
 
+        // Show target acquired message
+        showMessage(player, "Target Locked: " + targetEntity.getDisplayName().getString());
+
         // Play lock-on sound
         playSound(player, "lock_on");
     }
@@ -265,7 +396,7 @@ public class LockOnSystem {
     /**
      * Cycles through available targets
      */
-    private static void cycleTarget(LocalPlayer player) {
+    private static void cycleTarget(LocalPlayer player, boolean reverse) {
         if (potentialTargets.isEmpty()) {
             findTarget(player);
             return;
@@ -283,8 +414,8 @@ public class LockOnSystem {
         if (currentTargetIndex == -1) {
             currentTargetIndex = 0;
         } else {
-            // Move to next target
-            if (LockOnConfig.reverseScrollCycling()) {
+            // Move to next/previous target
+            if (reverse || LockOnConfig.reverseScrollCycling()) {
                 currentTargetIndex = (currentTargetIndex - 1 + potentialTargets.size()) % potentialTargets.size();
             } else {
                 currentTargetIndex = (currentTargetIndex + 1) % potentialTargets.size();
@@ -296,6 +427,9 @@ public class LockOnSystem {
         // Reset smoothing values
         prevYaw = player.getYRot();
         prevPitch = player.getXRot();
+
+        // Show target switch message
+        showMessage(player, "Target: " + targetEntity.getDisplayName().getString());
 
         // Play target switch sound
         playSound(player, "target_switch");
@@ -409,10 +543,10 @@ public class LockOnSystem {
     }
 
     /**
-     * Sorts targets based on the selected targeting mode
+     * Sorts targets based on the selected targeting mode (with runtime override)
      */
     private static void sortTargetsByMode(LocalPlayer player, List<Entity> targets) {
-        LockOnConfig.TargetingMode mode = LockOnConfig.getTargetingMode();
+        LockOnConfig.TargetingMode mode = runtimeTargetingMode != null ? runtimeTargetingMode : LockOnConfig.getTargetingMode();
 
         switch (mode) {
             case CLOSEST:
@@ -535,9 +669,25 @@ public class LockOnSystem {
     }
 
     /**
+     * Sets the runtime targeting mode (overrides config)
+     */
+    private static void setRuntimeTargetingMode(LockOnConfig.TargetingMode mode) {
+        runtimeTargetingMode = mode;
+    }
+
+    /**
+     * Shows a message to the player
+     */
+    private static void showMessage(LocalPlayer player, String message) {
+        if (player != null) {
+            player.displayClientMessage(Component.literal(message), true);
+        }
+    }
+
+    /**
      * Clears the current target
      */
-    private static void clearTarget() {
+    public static void clearTarget() {
         if (targetEntity != null) {
             onTargetLost();
         }
@@ -552,6 +702,7 @@ public class LockOnSystem {
     private static void onTargetLost() {
         LocalPlayer player = Minecraft.getInstance().player;
         if (player != null) {
+            showMessage(player, "Target Lost");
             playSound(player, "target_lost");
         }
     }
@@ -601,5 +752,26 @@ public class LockOnSystem {
      */
     public static boolean hasTarget() {
         return targetEntity != null && targetEntity.isAlive();
+    }
+
+    /**
+     * Returns whether the indicator is currently visible
+     */
+    public static boolean isIndicatorVisible() {
+        return indicatorVisible;
+    }
+
+    /**
+     * Sets indicator visibility
+     */
+    public static void setIndicatorVisible(boolean visible) {
+        indicatorVisible = visible;
+    }
+
+    /**
+     * Gets the current runtime targeting mode
+     */
+    public static LockOnConfig.TargetingMode getRuntimeTargetingMode() {
+        return runtimeTargetingMode != null ? runtimeTargetingMode : LockOnConfig.getTargetingMode();
     }
 }

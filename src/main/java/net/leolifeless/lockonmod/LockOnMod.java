@@ -69,8 +69,25 @@ public class LockOnMod {
     public static class ClientModEvents {
         @SubscribeEvent
         public static void onClientSetup(FMLClientSetupEvent event) {
-            // Client setup logic
+            // Initialize custom indicator manager on client setup
+            event.enqueueWork(() -> {
+                CustomIndicatorManager.initialize();
+                LOGGER.info("Custom Indicator Manager initialized");
+            });
+
             LOGGER.info("Lock-On Mod client setup complete");
+        }
+    }
+
+    // Event handler for resource pack reloads
+    @Mod.EventBusSubscriber(modid = MOD_ID, bus = Mod.EventBusSubscriber.Bus.FORGE, value = Dist.CLIENT)
+    public static class ForgeEventHandler {
+
+        @SubscribeEvent
+        public static void onResourceReload(net.minecraftforge.client.event.RecipesUpdatedEvent event) {
+            // Refresh custom indicators when resource packs change
+            CustomIndicatorManager.refresh();
+            LOGGER.debug("Refreshed custom indicators after resource pack reload");
         }
     }
 }

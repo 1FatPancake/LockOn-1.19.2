@@ -119,9 +119,12 @@ public class LockOnRenderer {
         // Apply rotation animation
         poseStack.mulPose(Vector3f.ZP.rotationDegrees(rotationAngle));
 
+        // Get the current custom indicator texture
+        ResourceLocation texture = CustomIndicatorManager.getCurrentIndicatorTexture();
+
         // Set up texture rendering
         RenderSystem.setShader(GameRenderer::getPositionTexColorShader);
-        RenderSystem.setShaderTexture(0, CUSTOM_INDICATOR_TEXTURE);
+        RenderSystem.setShaderTexture(0, texture);
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
 
