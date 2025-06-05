@@ -6,7 +6,7 @@ A comprehensive lock-on targeting system for Minecraft 1.19.2 with smooth camera
 
 - **Smart Targeting**: Lock onto entities with multiple targeting modes (Closest, Most Damaged, Crosshair Centered, Threat Level)
 - **Smooth Camera**: Fluid camera movement with predictive targeting and customizable speeds
-- **Custom Indicators**: Use your own PNG images as targeting indicators - just drop them in the config folder!
+- **Custom Indicators**: Use your PNG images as targeting indicators - just drop them in the config folder!
 - **Visual Effects**: Multiple indicator types with pulsing, glow effects, and dynamic coloring
 - **Advanced Filtering**: Target specific entity types, health ranges, and distance controls
 - **Professional HUD**: Clean interface showing target info, distance, and health bars
@@ -27,22 +27,13 @@ A comprehensive lock-on targeting system for Minecraft 1.19.2 with smooth camera
 ### Quick Setup:
 1. Go to `.minecraft/config/lockonmod/custom_indicators/`
 2. Drop your PNG files (64x64 recommended)
-3. Press F3+T to reload or restart game
+3. Press F3+T to reload or restart the game
 4. Use `Ctrl + V` to cycle through your indicators
 
 ### Requirements:
 - PNG format with transparency
 - 8x8 to 512x512 pixels (64x64 recommended)
 - Use white/light colors for best results
-
-## ⚙️ Installation
-
-**Requirements:** Minecraft 1.19.2 + Forge 43.5.0+
-
-1. Download the mod
-2. Place in `mods` folder
-3. Launch with Forge
-4. Configure via in-game settings
 
 ## 🛠️ Key Features
 
@@ -54,7 +45,7 @@ A comprehensive lock-on targeting system for Minecraft 1.19.2 with smooth camera
 
 ## 🐛 Troubleshooting
 
-- **Poor Performance**: Reduce update frequency and max targets in config
+- **Poor Performance**: Reduce update frequency and max targets in the config
 - **Targeting Issues**: Check entity filters and line of sight settings
 - **Custom Indicators Not Working**: Ensure PNG files are valid and reload with F3+T
 
