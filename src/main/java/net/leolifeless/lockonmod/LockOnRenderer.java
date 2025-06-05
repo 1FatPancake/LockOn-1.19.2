@@ -2,8 +2,6 @@ package net.leolifeless.lockonmod;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
-import com.mojang.math.Matrix4f;
-import com.mojang.math.Vector3f;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.resources.ResourceLocation;
@@ -11,6 +9,8 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.client.event.RenderLevelStageEvent;
+import org.joml.Matrix4f;
+import org.joml.Vector3f;
 
 import java.awt.*;
 
@@ -25,7 +25,7 @@ public class LockOnRenderer {
 
     // Custom texture for the indicator
     private static final ResourceLocation CUSTOM_INDICATOR_TEXTURE =
-            ResourceLocation.fromNamespaceAndPath(MOD_ID, "textures/gui/custom_indicator.png");
+            new ResourceLocation(MOD_ID, "textures/gui/custom_indicator.png");
 
     /**
      * Main rendering method with enhanced features - now only renders the indicator
@@ -58,7 +58,7 @@ public class LockOnRenderer {
 
         // Make the indicator always face the camera
         poseStack.mulPose(minecraft.gameRenderer.getMainCamera().rotation());
-        poseStack.mulPose(Vector3f.YP.rotationDegrees(180f));
+        poseStack.mulPose(new org.joml.Quaternionf().rotationY((float) Math.PI));
 
         // Set up render system
         RenderSystem.disableDepthTest();
@@ -117,7 +117,7 @@ public class LockOnRenderer {
         poseStack.pushPose();
 
         // Apply rotation animation
-        poseStack.mulPose(Vector3f.ZP.rotationDegrees(rotationAngle));
+        poseStack.mulPose(new org.joml.Quaternionf().rotationZ(rotationAngle * (float) Math.PI / 180.0f));
 
         // Get the current custom indicator texture
         ResourceLocation texture = CustomIndicatorManager.getCurrentIndicatorTexture();

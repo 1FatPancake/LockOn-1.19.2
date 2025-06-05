@@ -2,26 +2,26 @@ package net.leolifeless.lockonmod;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
-import com.mojang.math.Matrix4f;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
-import net.minecraftforge.client.event.RenderGuiOverlayEvent;
+import net.minecraftforge.client.event.RenderGuiEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
+import org.joml.Matrix4f;
 
 import java.awt.*;
 
 /**
- * Renders lock-on information on the player's HUD (1.19.2 compatible)
+ * Renders lock-on information on the player's HUD (1.20.1 compatible)
  */
 @Mod.EventBusSubscriber(modid = LockOnMod.MOD_ID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public class LockOnHudRenderer {
 
     @SubscribeEvent
-    public static void onRenderGuiOverlay(RenderGuiOverlayEvent.Post event) {
+    public static void onRenderGuiOverlay(RenderGuiEvent.Post event) {
         Entity target = LockOnSystem.getTargetEntity();
         if (target == null || !target.isAlive()) {
             return;
@@ -32,7 +32,7 @@ public class LockOnHudRenderer {
             return;
         }
 
-        PoseStack poseStack = event.getPoseStack();
+        PoseStack poseStack = event.getGuiGraphics().pose();
         Font font = minecraft.font;
 
         int screenWidth = minecraft.getWindow().getGuiScaledWidth();
@@ -62,8 +62,8 @@ public class LockOnHudRenderer {
             String nameLabel = "Target: ";
             String name = target.getDisplayName().getString();
 
-            font.draw(poseStack, nameLabel, hudX, currentY, 0xFFFFFF);
-            font.draw(poseStack, name, hudX + font.width(nameLabel), currentY, colorInt);
+            event.getGuiGraphics().drawString(font, nameLabel, hudX, currentY, 0xFFFFFF);
+            event.getGuiGraphics().drawString(font, name, hudX + font.width(nameLabel), currentY, colorInt);
             currentY += lineHeight;
         }
 
@@ -79,8 +79,8 @@ public class LockOnHudRenderer {
                 distanceText = String.format("%.1f blocks", distance);
             }
 
-            font.draw(poseStack, distanceLabel, hudX, currentY, 0xFFFFFF);
-            font.draw(poseStack, distanceText, hudX + font.width(distanceLabel), currentY, colorInt);
+            event.getGuiGraphics().drawString(font, distanceLabel, hudX, currentY, 0xFFFFFF);
+            event.getGuiGraphics().drawString(font, distanceText, hudX + font.width(distanceLabel), currentY, colorInt);
             currentY += lineHeight;
         }
 
@@ -93,20 +93,19 @@ public class LockOnHudRenderer {
             String healthLabel = "Health: ";
             String healthText = String.format("%.0f/%.0f HP", health, maxHealth);
 
-            font.draw(poseStack, healthLabel, hudX, currentY, 0xFFFFFF);
-            font.draw(poseStack, healthText, hudX + font.width(healthLabel), currentY, colorInt);
+            event.getGuiGraphics().drawString(font, healthLabel, hudX, currentY, 0xFFFFFF);
+            event.getGuiGraphics().drawString(font, healthText, hudX + font.width(healthLabel), currentY, colorInt);
             currentY += lineHeight;
         }
     }
 
     /**
-     * Renders a semi-transparent background for the HUD (1.19.2 compatible)
+     * Renders a semi-transparent background for the HUD (1.20.1 compatible)
      */
     private static void renderHudBackground(PoseStack poseStack, int x, int y, int width, int height) {
         RenderSystem.setShader(GameRenderer::getPositionColorShader);
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
-        RenderSystem.disableTexture();
 
         Matrix4f matrix = poseStack.last().pose();
         BufferBuilder bufferBuilder = Tesselator.getInstance().getBuilder();
@@ -152,7 +151,6 @@ public class LockOnHudRenderer {
         bufferBuilder.vertex(matrix, x + width - 1, y + height, 0).color(85, 85, 85, 255).endVertex();
         BufferUploader.drawWithShader(bufferBuilder.end());
 
-        RenderSystem.enableTexture();
         RenderSystem.disableBlend();
     }
 

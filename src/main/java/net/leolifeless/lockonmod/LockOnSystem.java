@@ -2,7 +2,7 @@ package net.leolifeless.lockonmod;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.core.Registry;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvents;
@@ -358,11 +358,11 @@ public class LockOnSystem {
      * Enhanced target finding with multiple modes and filters
      */
     private static void findTarget(LocalPlayer player) {
-        if (player.level == null) return;
+        if (player.level() == null) return;
 
         // Get potential targets within search radius
         AABB searchBox = player.getBoundingBox().inflate(LockOnConfig.getSearchRadius());
-        List<Entity> nearbyEntities = player.level.getEntities(player, searchBox);
+        List<Entity> nearbyEntities = player.level().getEntities(player, searchBox);
 
         // Filter entities based on configuration
         potentialTargets = nearbyEntities.stream()
@@ -442,7 +442,7 @@ public class LockOnSystem {
         if (!(entity instanceof LivingEntity) || !entity.isAlive()) return false;
         if (entity == player) return false;
         if (entity.distanceTo(player) > LockOnConfig.getMaxLockOnDistance()) return false;
-        if (entity.level != player.level) return false;
+        if (entity.level() != player.level()) return false;
 
         LivingEntity living = (LivingEntity) entity;
 
@@ -461,7 +461,7 @@ public class LockOnSystem {
      */
     private static boolean passesEntityFilters(Entity entity) {
         // Check whitelist/blacklist
-        ResourceLocation entityType = EntityType.getKey(entity.getType());
+        ResourceLocation entityType = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType());
         String entityTypeString = entityType.toString();
 
         if (LockOnConfig.useWhitelist()) {
@@ -528,13 +528,13 @@ public class LockOnSystem {
         Vec3 end = getTargetPosition(entity);
 
         ClipContext context = new ClipContext(start, end, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, player);
-        BlockHitResult result = player.level.clip(context);
+        BlockHitResult result = player.level().clip(context);
 
         if (result.getType() == HitResult.Type.MISS) return true;
 
         // Check glass penetration
         if (LockOnConfig.canPenetrateGlass()) {
-            BlockState hitBlock = player.level.getBlockState(result.getBlockPos());
+            BlockState hitBlock = player.level().getBlockState(result.getBlockPos());
             return hitBlock.is(Blocks.GLASS) || hitBlock.is(Blocks.GLASS_PANE) ||
                     hitBlock.getBlock().toString().toLowerCase().contains("glass");
         }
@@ -726,9 +726,9 @@ public class LockOnSystem {
                 break;
         }
 
-        if (shouldPlay && player.level != null) {
+        if (shouldPlay && player.level() != null) {
             float volume = LockOnConfig.getSoundVolume();
-            player.level.playSound(player, player.blockPosition(), SoundEvents.UI_BUTTON_CLICK,
+            player.level().playSound(player, player.blockPosition(), SoundEvents.UI_BUTTON_CLICK.value(),
                     SoundSource.PLAYERS, volume, 1.0F);
         }
     }

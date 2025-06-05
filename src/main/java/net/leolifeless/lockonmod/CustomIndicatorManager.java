@@ -22,7 +22,7 @@ import java.util.*;
 import java.util.stream.Stream;
 
 /**
- * Manages custom indicator textures from multiple sources (1.19.2 compatible)
+ * Manages custom indicator textures from multiple sources (1.20.1 compatible)
  */
 public class CustomIndicatorManager {
     private static final Logger LOGGER = LogUtils.getLogger();
@@ -265,7 +265,7 @@ public class CustomIndicatorManager {
     }
 
     /**
-     * Registers a user texture file as a dynamic texture (1.19.2 compatible)
+     * Registers a user texture file as a dynamic texture (1.20.1 compatible)
      */
     private static ResourceLocation registerUserTexture(String name, File file) {
         // Create a unique resource location for this user texture
@@ -275,7 +275,7 @@ public class CustomIndicatorManager {
             // Load the image
             BufferedImage bufferedImage = ImageIO.read(file);
 
-            // Convert BufferedImage to NativeImage (1.19.2 requirement)
+            // Convert BufferedImage to NativeImage (1.20.1 requirement)
             NativeImage nativeImage = convertBufferedImageToNativeImage(bufferedImage);
 
             // Register it with Minecraft's texture manager
@@ -292,7 +292,7 @@ public class CustomIndicatorManager {
     }
 
     /**
-     * Converts BufferedImage to NativeImage for 1.19.2 compatibility
+     * Converts BufferedImage to NativeImage for 1.20.1 compatibility
      */
     private static NativeImage convertBufferedImageToNativeImage(BufferedImage bufferedImage) throws IOException {
         // Convert BufferedImage to byte array

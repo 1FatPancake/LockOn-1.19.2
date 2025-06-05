@@ -25,30 +25,29 @@ public class LockOnMod {
     // Directly reference a slf4j logger
     public static final Logger LOGGER = LogUtils.getLogger();
 
-    public LockOnMod(FMLJavaModLoadingContext context) {
-        IEventBus modEventBus = context.getModEventBus();
+    public LockOnMod() {
+        IEventBus modEventBus = FMLJavaModLoadingContext.get().getModEventBus();
 
         // Register the commonSetup method for modloading
         modEventBus.addListener(this::commonSetup);
 
         // Register the key mapping registration method
-        modEventBus.addListener(this::onRegisterKeyMappings);  // Add this line
+        modEventBus.addListener(this::onRegisterKeyMappings);
         // Initialize keybindings
         LockOnKeybinds.init();
 
         // Register configuration
-        context.registerConfig(ModConfig.Type.CLIENT, LockOnConfig.CLIENT_SPEC);
+        ModLoadingContext.get().registerConfig(ModConfig.Type.CLIENT, LockOnConfig.CLIENT_SPEC);
 
         // Register ourselves for server and other game events we are interested in
         MinecraftForge.EVENT_BUS.register(this);
-
     }
 
     private void commonSetup(final FMLCommonSetupEvent event){
         LOGGER.info("Lock-On Mod initializing...");
     }
 
-    // This is the correct way to register key mappings in 1.19.2
+    // This is the correct way to register key mappings in 1.20.1
     private void onRegisterKeyMappings(final RegisterKeyMappingsEvent event) {
         LockOnKeybinds.register(event);
     }
@@ -61,7 +60,7 @@ public class LockOnMod {
 
     // Helper method to create resource locations for this mod
     public static ResourceLocation location(String path) {
-        return new ResourceLocation(MOD_ID, path); // Fixed constructor usage
+        return new ResourceLocation(MOD_ID, path);
     }
 
     // You can use EventBusSubscriber to automatically register all static methods in the class annotated with @SubscribeEvent
