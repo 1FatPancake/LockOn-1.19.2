@@ -1,35 +1,15 @@
 # TargetLock Mod
 
-A comprehensive lock-on targeting system for Minecraft 1.19.2 that provides smooth camera control, intelligent target selection, and customizable visual indicators.
+A comprehensive lock-on targeting system for Minecraft 1.19.2 with smooth camera control, intelligent target selection, and custom visual indicators.
 
 ## 🎯 Features
 
-### Core Functionality
-- **Advanced Targeting System**: Lock onto entities with intelligent prioritization
-- **Smooth Camera Control**: Fluid camera movement with predictive targeting
-- **Multiple Targeting Modes**: Closest, Most Damaged, Cross-hair Centered, Threat Level
-- **Target Cycling**: Seamlessly switch between multiple targets
-- **HUD Information Display**: Clean interface showing target name, distance, and health
-
-### Visual Indicators
-- **Multiple Indicator Types**: Circle, Cross-hair, Diamond, Square, Custom animated star
-- **Dynamic Effects**: Pulsing animations, glow effects, and rotating indicators
-- **Color Customization**: Configurable colors with dynamic health/distance-based coloring
-- **Professional HUD**: Top-right corner display with health bars and target information
-
-### Smart Filtering
-- **Entity Type Filters**: Target players, hostile mobs, passive mobs, bosses, etc.
-- **Health-Based Filtering**: Set minimum/maximum health thresholds
-- **Distance Controls**: Configurable lock-on range and search radius
-- **Line of Sight**: Optional requirement with glass penetration support
-- **Blacklist/Whitelist**: Exclude or exclusively target specific entity types
-
-### Configuration Options
-- **Extensive Customization**: Over 50 configuration options
-- **Keybinding Modes**: Hold-to-maintain, toggle, or hybrid modes
-- **Performance Settings**: Adjustable update frequency and search limits
-- **Audio Feedback**: Configurable sound effects for targeting events
-- **Game Mode Support**: Optional disable in creative/spectator modes
+- **Smart Targeting**: Lock onto entities with multiple targeting modes (Closest, Most Damaged, Crosshair Centered, Threat Level)
+- **Smooth Camera**: Fluid camera movement with predictive targeting and customizable speeds
+- **Custom Indicators**: Use your PNG images as targeting indicators - just drop them in the config folder!
+- **Visual Effects**: Multiple indicator types with pulsing, glow effects, and dynamic coloring
+- **Advanced Filtering**: Target specific entity types, health ranges, and distance controls
+- **Professional HUD**: Clean interface showing target info, distance, and health bars
 
 ## 🎮 Default Controls
 
@@ -38,33 +18,43 @@ A comprehensive lock-on targeting system for Minecraft 1.19.2 that provides smoo
 | `R` | Lock-On Target |
 | `T` | Cycle Target |
 | `Shift + T` | Cycle Target (Reverse) |
-| `ESC` | Clear Target |
-| `Ctrl + 1` | Target Closest |
-| `Ctrl + 2` | Target Most Damaged |
-| `Ctrl + 3` | Target by Threat Level |
-| `Alt + P` | Toggle Player Targeting |
-| `Alt + H` | Toggle Hostile Mob Targeting |
-| `Alt + A` | Toggle Passive Mob Targeting |
-| `Ctrl + I` | Toggle Indicator Visibility |
 | `Ctrl + V` | Cycle Indicator Type |
+| `Ctrl + I` | Toggle Indicator Visibility |
+| `ESC` | Clear Target |
 
+## 🖼️ Custom Indicators
 
-🐛 Troubleshooting
-Common Issues
-Mod not working:
+### Quick Setup:
+1. Go to `.minecraft/config/lockonmod/custom_indicators/`
+2. Drop your PNG files (64x64 recommended)
+3. Press F3+T to reload or restart the game
+4. Use `Ctrl + V` to cycle through your indicators
 
-Verify Minecraft 1.19.2 with Forge 43.5.0+
-Check mod is in the correct mods folder
-Ensure no conflicting mods
+### Requirements:
+- PNG format with transparency
+- 8x8 to 512x512 pixels (64x64 recommended)
+- Use white/light colors for best results
 
-Poor performance:
+## 🛠️ Key Features
 
-Reduce updateFrequency in the config
-Lower maxTargetsToSearch
-Disable visual effects if needed
+- **60+ Configuration Options**: Customize everything from targeting behavior to visual effects
+- **Multiple Targeting Modes**: Switch between different targeting priorities
+- **Smart Filtering**: Target only what you want with extensive filter options
+- **Performance Optimized**: Configurable update rates and search limits
+- **Audio Feedback**: Sound effects for targeting events
 
-Targeting is not working:
+## 🐛 Troubleshooting
 
-Check entity filters in the configuration
-Verify line of sight settings
-Ensure you're within max distance
+- **Poor Performance**: Reduce update frequency and max targets in the config
+- **Targeting Issues**: Check entity filters and line of sight settings
+- **Custom Indicators Not Working**: Ensure PNG files are valid and reload with F3+T
+
+## 📞 Support
+
+- Report issues on GitHub
+- Check logs in `.minecraft/logs/` for errors
+- Config files in `.minecraft/config/lockonmod/`
+
+---
+
+**Created by Leolifeless** | **Minecraft 1.19.2** | **Client-Side Only**
