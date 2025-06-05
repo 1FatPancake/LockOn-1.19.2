@@ -61,7 +61,7 @@ public class LockOnMod {
 
     // Helper method to create resource locations for this mod
     public static ResourceLocation location(String path) {
-        return ResourceLocation.fromNamespaceAndPath(MOD_ID, path); // Fixed constructor usage
+        return new ResourceLocation(MOD_ID, path); // Fixed constructor usage
     }
 
     // You can use EventBusSubscriber to automatically register all static methods in the class annotated with @SubscribeEvent
