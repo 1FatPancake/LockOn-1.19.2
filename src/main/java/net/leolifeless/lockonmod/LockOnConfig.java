@@ -1,5 +1,6 @@
 package net.leolifeless.lockonmod;
 
+import net.leolifeless.lockonmod.compat.ThirdPersonCompatibility;
 import net.minecraftforge.common.ForgeConfigSpec;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -11,7 +12,7 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * Enhanced Configuration handler for the Lock-On Mod with extensive customization options
+ * Enhanced Configuration handler for the Lock-On Mod with third person compatibility
  */
 @Mod.EventBusSubscriber(modid = LockOnMod.MOD_ID, bus = Mod.EventBusSubscriber.Bus.MOD)
 public class LockOnConfig {
@@ -25,7 +26,7 @@ public class LockOnConfig {
     }
 
     /**
-     * Enhanced client-side configuration options
+     * Enhanced client-side configuration options with third person support
      */
     public static class ClientConfig {
         // === TARGETING SETTINGS ===
@@ -40,62 +41,51 @@ public class LockOnConfig {
         public final ForgeConfigSpec.DoubleValue distancePriorityWeight;
         public final ForgeConfigSpec.DoubleValue anglePriorityWeight;
 
+        // === THIRD PERSON COMPATIBILITY SETTINGS ===
+        public final ForgeConfigSpec.BooleanValue enableThirdPersonEnhancements;
+        public final ForgeConfigSpec.DoubleValue thirdPersonRangeMultiplier;
+        public final ForgeConfigSpec.DoubleValue thirdPersonAngleMultiplier;
+        public final ForgeConfigSpec.DoubleValue thirdPersonSmoothingFactor;
+        public final ForgeConfigSpec.DoubleValue thirdPersonRotationSpeedMultiplier;
+        public final ForgeConfigSpec.DoubleValue thirdPersonIndicatorSizeMultiplier;
+        public final ForgeConfigSpec.BooleanValue adjustForCameraOffset;
+        public final ForgeConfigSpec.BooleanValue enhancedThirdPersonSmoothing;
+        public final ForgeConfigSpec.BooleanValue autoDetectThirdPerson;
+
         // === CAMERA SETTINGS ===
         public final ForgeConfigSpec.DoubleValue rotationSpeed;
         public final ForgeConfigSpec.DoubleValue minRotationSpeed;
         public final ForgeConfigSpec.DoubleValue maxRotationSpeed;
-        public final ForgeConfigSpec.DoubleValue distanceWeight;
-        public final ForgeConfigSpec.BooleanValue enableSmoothCamera;
-        public final ForgeConfigSpec.DoubleValue smoothingFactor;
+        public final ForgeConfigSpec.BooleanValue smoothCameraEnabled;
+        public final ForgeConfigSpec.DoubleValue cameraSmoothness;
+        public final ForgeConfigSpec.BooleanValue adaptiveRotationEnabled;
         public final ForgeConfigSpec.BooleanValue predictiveTargeting;
-        public final ForgeConfigSpec.DoubleValue predictionStrength;
         public final ForgeConfigSpec.BooleanValue autoBreakOnObstruction;
-        public final ForgeConfigSpec.DoubleValue cameraOffset;
 
         // === VISUAL SETTINGS ===
         public final ForgeConfigSpec.EnumValue<IndicatorType> indicatorType;
         public final ForgeConfigSpec.DoubleValue indicatorSize;
-        public final ForgeConfigSpec.DoubleValue pulseSpeed;
-        public final ForgeConfigSpec.DoubleValue pulseAmplitude;
-        public final ForgeConfigSpec.BooleanValue enablePulse;
-        public final ForgeConfigSpec.BooleanValue enableGlow;
-        public final ForgeConfigSpec.DoubleValue glowIntensity;
+        public final ForgeConfigSpec.BooleanValue pulseEnabled;
+        public final ForgeConfigSpec.BooleanValue glowEnabled;
+        public final ForgeConfigSpec.BooleanValue showTargetDistance;
+        public final ForgeConfigSpec.BooleanValue showTargetHealth;
+        public final ForgeConfigSpec.BooleanValue showTargetName;
         public final ForgeConfigSpec.BooleanValue showDistance;
         public final ForgeConfigSpec.BooleanValue showHealthBar;
-        public final ForgeConfigSpec.BooleanValue showTargetName;
         public final ForgeConfigSpec.EnumValue<DistanceUnit> distanceUnit;
-        public final ForgeConfigSpec.ConfigValue<String> customIndicatorName;
-        public final ForgeConfigSpec.BooleanValue enableCustomIndicatorCycling;
 
         // === COLOR SETTINGS ===
-        public final ForgeConfigSpec.IntValue indicatorColorRed;
-        public final ForgeConfigSpec.IntValue indicatorColorGreen;
-        public final ForgeConfigSpec.IntValue indicatorColorBlue;
-        public final ForgeConfigSpec.IntValue indicatorColorAlpha;
-        public final ForgeConfigSpec.IntValue outlineColorRed;
-        public final ForgeConfigSpec.IntValue outlineColorGreen;
-        public final ForgeConfigSpec.IntValue outlineColorBlue;
-        public final ForgeConfigSpec.IntValue outlineColorAlpha;
-        public final ForgeConfigSpec.IntValue textColorRed;
-        public final ForgeConfigSpec.IntValue textColorGreen;
-        public final ForgeConfigSpec.IntValue textColorBlue;
-        public final ForgeConfigSpec.IntValue textColorAlpha;
-        public final ForgeConfigSpec.BooleanValue dynamicColorBasedOnHealth;
-        public final ForgeConfigSpec.BooleanValue dynamicColorBasedOnDistance;
-        public final ForgeConfigSpec.IntValue customIndicatorVariant;
+        public final ForgeConfigSpec.ConfigValue<String> indicatorColorHex;
+        public final ForgeConfigSpec.ConfigValue<String> outlineColorHex;
+        public final ForgeConfigSpec.ConfigValue<String> textColorHex;
+        public final ForgeConfigSpec.BooleanValue dynamicHealthColorEnabled;
+        public final ForgeConfigSpec.BooleanValue dynamicDistanceColorEnabled;
 
-
-        // === TARGET FILTER SETTINGS ===
-        public final ForgeConfigSpec.BooleanValue targetPlayers;
-        public final ForgeConfigSpec.BooleanValue targetHostileMobs;
-        public final ForgeConfigSpec.BooleanValue targetPassiveMobs;
-        public final ForgeConfigSpec.BooleanValue targetNeutralMobs;
-        public final ForgeConfigSpec.BooleanValue targetBosses;
-        public final ForgeConfigSpec.BooleanValue targetUndead;
-        public final ForgeConfigSpec.BooleanValue targetAnimals;
-        public final ForgeConfigSpec.BooleanValue targetVillagers;
-        public final ForgeConfigSpec.BooleanValue targetTameable;
-        public final ForgeConfigSpec.BooleanValue targetOwned;
+        // === FILTER SETTINGS ===
+        public final ForgeConfigSpec.BooleanValue canTargetPlayers;
+        public final ForgeConfigSpec.BooleanValue canTargetHostileMobs;
+        public final ForgeConfigSpec.BooleanValue canTargetPassiveMobs;
+        public final ForgeConfigSpec.BooleanValue canTargetBosses;
         public final ForgeConfigSpec.DoubleValue minTargetHealth;
         public final ForgeConfigSpec.DoubleValue maxTargetHealth;
         public final ForgeConfigSpec.ConfigValue<List<? extends String>> entityBlacklist;
@@ -109,7 +99,7 @@ public class LockOnConfig {
         public final ForgeConfigSpec.BooleanValue targetSwitchSound;
         public final ForgeConfigSpec.BooleanValue targetLostSound;
 
-        // === KEYBINDING SETTINGS ===
+        // === KEYBINDING BEHAVIOR ===
         public final ForgeConfigSpec.BooleanValue holdToMaintainLock;
         public final ForgeConfigSpec.BooleanValue toggleMode;
         public final ForgeConfigSpec.BooleanValue cycleThroughTargets;
@@ -121,27 +111,25 @@ public class LockOnConfig {
         public final ForgeConfigSpec.BooleanValue disableInCreative;
         public final ForgeConfigSpec.BooleanValue disableInSpectator;
 
-        ClientConfig(ForgeConfigSpec.Builder builder) {
-            builder.comment("Enhanced Lock-On Mod Client Configuration")
-                    .push("general");
-
+        public ClientConfig(ForgeConfigSpec.Builder builder) {
             // === TARGETING SETTINGS ===
-            builder.comment("Advanced Targeting Settings").push("targeting");
+            builder.comment("Targeting Settings")
+                    .push("targeting");
 
             maxLockOnDistance = builder
-                    .comment("Maximum distance to lock onto entities")
-                    .defineInRange("maxLockOnDistance", 32.0, 5.0, 100.0);
+                    .comment("Maximum distance to lock onto targets")
+                    .defineInRange("maxLockOnDistance", 50.0, 5.0, 200.0);
 
             searchRadius = builder
-                    .comment("Radius around player to search for entities")
-                    .defineInRange("searchRadius", 10.0, 2.0, 50.0);
+                    .comment("Radius around player to search for targets")
+                    .defineInRange("searchRadius", 30.0, 5.0, 100.0);
 
             targetingMode = builder
-                    .comment("Targeting mode: CLOSEST, MOST_DAMAGED, CROSSHAIR_CENTERED, THREAT_LEVEL")
-                    .defineEnum("targetingMode", TargetingMode.CROSSHAIR_CENTERED);
+                    .comment("Default targeting mode")
+                    .defineEnum("targetingMode", TargetingMode.CLOSEST);
 
             requireLineOfSight = builder
-                    .comment("Require line of sight to target entities")
+                    .comment("Require line of sight to target")
                     .define("requireLineOfSight", true);
 
             penetrateGlass = builder
@@ -149,198 +137,216 @@ public class LockOnConfig {
                     .define("penetrateGlass", true);
 
             targetingAngle = builder
-                    .comment("Maximum angle from crosshair to consider entities (degrees)")
+                    .comment("Maximum angle from crosshair to consider targets (degrees)")
                     .defineInRange("targetingAngle", 45.0, 10.0, 180.0);
 
             smartTargeting = builder
-                    .comment("Use intelligent targeting that considers multiple factors")
+                    .comment("Use intelligent targeting with multiple factors")
                     .define("smartTargeting", true);
 
             healthPriorityWeight = builder
-                    .comment("Weight for health in smart targeting (lower health = higher priority)")
+                    .comment("Weight for health-based targeting priority")
                     .defineInRange("healthPriorityWeight", 0.3, 0.0, 1.0);
 
             distancePriorityWeight = builder
-                    .comment("Weight for distance in smart targeting (closer = higher priority)")
+                    .comment("Weight for distance-based targeting priority")
                     .defineInRange("distancePriorityWeight", 0.4, 0.0, 1.0);
 
             anglePriorityWeight = builder
-                    .comment("Weight for crosshair angle in smart targeting")
+                    .comment("Weight for angle-based targeting priority")
                     .defineInRange("anglePriorityWeight", 0.3, 0.0, 1.0);
 
             builder.pop();
 
+            // === THIRD PERSON COMPATIBILITY SETTINGS ===
+            builder.comment("Third Person Compatibility Settings",
+                            "These settings enhance the targeting experience when using third-person camera mods",
+                            "like Leawind's Third Person mod")
+                    .push("thirdPersonCompat");
+
+            enableThirdPersonEnhancements = builder
+                    .comment("Enable enhanced features when third-person mods are detected")
+                    .define("enableThirdPersonEnhancements", true);
+
+            thirdPersonRangeMultiplier = builder
+                    .comment("Multiplier for targeting range in third person mode")
+                    .defineInRange("thirdPersonRangeMultiplier", 1.2, 0.5, 3.0);
+
+            thirdPersonAngleMultiplier = builder
+                    .comment("Multiplier for targeting angle in third person mode")
+                    .defineInRange("thirdPersonAngleMultiplier", 1.3, 0.5, 2.0);
+
+            thirdPersonSmoothingFactor = builder
+                    .comment("Additional smoothing factor for third person camera")
+                    .defineInRange("thirdPersonSmoothingFactor", 1.15, 0.5, 2.0);
+
+            thirdPersonRotationSpeedMultiplier = builder
+                    .comment("Rotation speed multiplier for third person mode")
+                    .defineInRange("thirdPersonRotationSpeedMultiplier", 0.85, 0.1, 2.0);
+
+            thirdPersonIndicatorSizeMultiplier = builder
+                    .comment("Indicator size multiplier for third person mode")
+                    .defineInRange("thirdPersonIndicatorSizeMultiplier", 1.0, 0.5, 2.0);
+
+            adjustForCameraOffset = builder
+                    .comment("Adjust targeting calculations for third person camera offset")
+                    .define("adjustForCameraOffset", true);
+
+            enhancedThirdPersonSmoothing = builder
+                    .comment("Use enhanced smoothing algorithms in third person")
+                    .define("enhancedThirdPersonSmoothing", true);
+
+            autoDetectThirdPerson = builder
+                    .comment("Automatically detect and adjust for third person perspective")
+                    .define("autoDetectThirdPerson", true);
+
+            builder.pop();
+
             // === CAMERA SETTINGS ===
-            builder.comment("Enhanced Camera Settings").push("camera");
+            builder.comment("Camera Settings")
+                    .push("camera");
 
             rotationSpeed = builder
                     .comment("Base camera rotation speed")
-                    .defineInRange("rotationSpeed", 0.25, 0.01, 2.0);
+                    .defineInRange("rotationSpeed", 0.15, 0.01, 1.0);
 
             minRotationSpeed = builder
-                    .comment("Minimum rotation speed")
-                    .defineInRange("minRotationSpeed", 0.1, 0.01, 1.0);
+                    .comment("Minimum adaptive rotation speed")
+                    .defineInRange("minRotationSpeed", 0.05, 0.01, 0.5);
 
             maxRotationSpeed = builder
-                    .comment("Maximum rotation speed")
-                    .defineInRange("maxRotationSpeed", 1.0, 0.1, 3.0);
+                    .comment("Maximum adaptive rotation speed")
+                    .defineInRange("maxRotationSpeed", 0.5, 0.1, 2.0);
 
-            distanceWeight = builder
-                    .comment("How much distance affects rotation speed")
-                    .defineInRange("distanceWeight", 0.5, 0.0, 1.0);
-
-            enableSmoothCamera = builder
+            smoothCameraEnabled = builder
                     .comment("Enable smooth camera interpolation")
-                    .define("enableSmoothCamera", true);
+                    .define("smoothCameraEnabled", true);
 
-            smoothingFactor = builder
-                    .comment("Camera smoothing strength (higher = smoother)")
-                    .defineInRange("smoothingFactor", 0.7, 0.1, 0.95);
+            cameraSmoothness = builder
+                    .comment("Camera smoothness factor (higher = smoother)")
+                    .defineInRange("cameraSmoothness", 0.1, 0.01, 1.0);
+
+            adaptiveRotationEnabled = builder
+                    .comment("Enable adaptive rotation speed based on distance and angle")
+                    .define("adaptiveRotationEnabled", true);
 
             predictiveTargeting = builder
                     .comment("Predict target movement for better tracking")
-                    .define("predictiveTargeting", true);
-
-            predictionStrength = builder
-                    .comment("Strength of movement prediction")
-                    .defineInRange("predictionStrength", 0.5, 0.0, 2.0);
+                    .define("predictiveTargeting", false);
 
             autoBreakOnObstruction = builder
                     .comment("Automatically break lock when target is obstructed")
-                    .define("autoBreakOnObstruction", false);
-
-            cameraOffset = builder
-                    .comment("Vertical offset for camera targeting (0 = center, 1 = head)")
-                    .defineInRange("cameraOffset", 0.5, 0.0, 1.0);
+                    .define("autoBreakOnObstruction", true);
 
             builder.pop();
 
             // === VISUAL SETTINGS ===
-            builder.comment("Enhanced Visual Settings").push("visual");
+            builder.comment("Visual Settings")
+                    .push("visual");
 
             indicatorType = builder
-                    .comment("Type of lock-on indicator: CIRCLE, CROSSHAIR, DIAMOND, SQUARE, CUSTOM")
+                    .comment("Type of lock-on indicator to display")
                     .defineEnum("indicatorType", IndicatorType.CIRCLE);
-
-            customIndicatorVariant = builder
-                    .comment("Which custom indicator variant to use (0-2)")
-                    .defineInRange("customIndicatorVariant", 0, 0, 2);
-
-            customIndicatorName = builder
-                    .comment("Name of the custom indicator to use when indicatorType is CUSTOM")
-                    .define("customIndicatorName", "default");
-
-            enableCustomIndicatorCycling = builder
-                    .comment("Enable cycling through custom indicators with keybind")
-                    .define("enableCustomIndicatorCycling", true);
 
             indicatorSize = builder
                     .comment("Size of the lock-on indicator")
-                    .defineInRange("indicatorSize", 0.5, 0.1, 3.0);
+                    .defineInRange("indicatorSize", 1.0, 0.1, 5.0);
 
-            pulseSpeed = builder
-                    .comment("Speed of the pulse animation")
-                    .defineInRange("pulseSpeed", 1.5, 0.1, 10.0);
+            pulseEnabled = builder
+                    .comment("Enable pulsing animation for indicators")
+                    .define("pulseEnabled", true);
 
-            pulseAmplitude = builder
-                    .comment("Size variation in pulse")
-                    .defineInRange("pulseAmplitude", 0.15, 0.0, 1.0);
+            glowEnabled = builder
+                    .comment("Enable glow effect around indicators")
+                    .define("glowEnabled", true);
 
-            enablePulse = builder
-                    .comment("Enable pulsing animation")
-                    .define("enablePulse", true);
+            showTargetDistance = builder
+                    .comment("Display distance to target")
+                    .define("showTargetDistance", true);
 
-            enableGlow = builder
-                    .comment("Enable glow effect around indicator")
-                    .define("enableGlow", true);
+            showTargetHealth = builder
+                    .comment("Display target health information")
+                    .define("showTargetHealth", true);
 
-            glowIntensity = builder
-                    .comment("Intensity of the glow effect")
-                    .defineInRange("glowIntensity", 0.5, 0.0, 2.0);
+            showTargetName = builder
+                    .comment("Display target name/type")
+                    .define("showTargetName", true);
 
+            // Legacy compatibility
             showDistance = builder
-                    .comment("Show distance to target")
+                    .comment("Display distance to target (legacy)")
                     .define("showDistance", true);
 
             showHealthBar = builder
-                    .comment("Show target health bar")
+                    .comment("Display target health bar (legacy)")
                     .define("showHealthBar", true);
 
-            showTargetName = builder
-                    .comment("Show target name/type")
-                    .define("showTargetName", true);
-
             distanceUnit = builder
-                    .comment("Unit for distance display: BLOCKS, METERS")
+                    .comment("Unit for displaying distance")
                     .defineEnum("distanceUnit", DistanceUnit.BLOCKS);
 
             builder.pop();
 
             // === COLOR SETTINGS ===
-            builder.comment("Enhanced Color Settings").push("colors");
+            builder.comment("Color Settings (use hex format: #RRGGBB or #AARRGGBB)")
+                    .push("colors");
 
-            // Indicator Color
-            builder.comment("Primary Indicator Color").push("indicatorColor");
-            indicatorColorRed = builder.defineInRange("red", 255, 0, 255);
-            indicatorColorGreen = builder.defineInRange("green", 50, 0, 255);
-            indicatorColorBlue = builder.defineInRange("blue", 50, 0, 255);
-            indicatorColorAlpha = builder.defineInRange("alpha", 180, 0, 255);
-            builder.pop();
+            indicatorColorHex = builder
+                    .comment("Primary color of the lock-on indicator")
+                    .define("indicatorColorHex", "#FF6600");
 
-            // Outline Color
-            builder.comment("Outline Color").push("outlineColor");
-            outlineColorRed = builder.defineInRange("red", 255, 0, 255);
-            outlineColorGreen = builder.defineInRange("green", 255, 0, 255);
-            outlineColorBlue = builder.defineInRange("blue", 255, 0, 255);
-            outlineColorAlpha = builder.defineInRange("alpha", 220, 0, 255);
-            builder.pop();
+            outlineColorHex = builder
+                    .comment("Color of the indicator outline")
+                    .define("outlineColorHex", "#FFFFFF");
 
-            // Text Color
-            builder.comment("Text Color").push("textColor");
-            textColorRed = builder.defineInRange("red", 255, 0, 255);
-            textColorGreen = builder.defineInRange("green", 255, 0, 255);
-            textColorBlue = builder.defineInRange("blue", 255, 0, 255);
-            textColorAlpha = builder.defineInRange("alpha", 255, 0, 255);
-            builder.pop();
+            textColorHex = builder
+                    .comment("Color of information text")
+                    .define("textColorHex", "#FFFFFF");
 
-            dynamicColorBasedOnHealth = builder
-                    .comment("Change indicator color based on target health (red=low, green=high)")
-                    .define("dynamicColorBasedOnHealth", false);
+            dynamicHealthColorEnabled = builder
+                    .comment("Change indicator color based on target health")
+                    .define("dynamicHealthColorEnabled", true);
 
-            dynamicColorBasedOnDistance = builder
-                    .comment("Change indicator color based on distance (blue=close, red=far)")
-                    .define("dynamicColorBasedOnDistance", false);
+            dynamicDistanceColorEnabled = builder
+                    .comment("Change indicator color based on distance")
+                    .define("dynamicDistanceColorEnabled", false);
 
             builder.pop();
 
-            // === TARGET FILTER SETTINGS ===
-            builder.comment("Advanced Target Filter Settings").push("filters");
+            // === FILTER SETTINGS ===
+            builder.comment("Target Filter Settings")
+                    .push("filters");
 
-            targetPlayers = builder.define("targetPlayers", true);
-            targetHostileMobs = builder.define("targetHostileMobs", true);
-            targetPassiveMobs = builder.define("targetPassiveMobs", true);
-            targetNeutralMobs = builder.define("targetNeutralMobs", true);
-            targetBosses = builder.define("targetBosses", true);
-            targetUndead = builder.define("targetUndead", true);
-            targetAnimals = builder.define("targetAnimals", true);
-            targetVillagers = builder.define("targetVillagers", false);
-            targetTameable = builder.define("targetTameable", false);
-            targetOwned = builder.define("targetOwned", false);
+            canTargetPlayers = builder
+                    .comment("Allow targeting other players")
+                    .define("canTargetPlayers", true);
+
+            canTargetHostileMobs = builder
+                    .comment("Allow targeting hostile mobs")
+                    .define("canTargetHostileMobs", true);
+
+            canTargetPassiveMobs = builder
+                    .comment("Allow targeting passive mobs")
+                    .define("canTargetPassiveMobs", false);
+
+            canTargetBosses = builder
+                    .comment("Allow targeting boss mobs")
+                    .define("canTargetBosses", true);
 
             minTargetHealth = builder
                     .comment("Minimum target health to consider")
-                    .defineInRange("minTargetHealth", 0.0, 0.0, 1000.0);
+                    .defineInRange("minTargetHealth", 1.0, 0.1, 1000.0);
 
             maxTargetHealth = builder
                     .comment("Maximum target health to consider (0 = no limit)")
-                    .defineInRange("maxTargetHealth", 0.0, 0.0, 1000.0);
+                    .defineInRange("maxTargetHealth", 0.0, 0.0, 10000.0);
 
             entityBlacklist = builder
-                    .comment("List of entity types to never target (e.g., 'minecraft:pig', 'minecraft:cow')")
-                    .defineList("entityBlacklist", Arrays.asList(), obj -> obj instanceof String);
+                    .comment("List of entity IDs to never target")
+                    .defineList("entityBlacklist", Arrays.asList("minecraft:villager", "minecraft:cat"), obj -> obj instanceof String);
 
             entityWhitelist = builder
-                    .comment("List of entity types to exclusively target (empty = target all allowed)")
+                    .comment("List of entity IDs to exclusively target (when whitelist is enabled)")
                     .defineList("entityWhitelist", Arrays.asList(), obj -> obj instanceof String);
 
             useWhitelist = builder
@@ -350,47 +356,64 @@ public class LockOnConfig {
             builder.pop();
 
             // === AUDIO SETTINGS ===
-            builder.comment("Audio Settings").push("audio");
+            builder.comment("Audio Settings")
+                    .push("audio");
 
-            enableSounds = builder.define("enableSounds", true);
-            soundVolume = builder.defineInRange("soundVolume", 1.0, 0.0, 2.0);
-            lockOnSound = builder.define("lockOnSound", true);
-            targetSwitchSound = builder.define("targetSwitchSound", true);
-            targetLostSound = builder.define("targetLostSound", true);
+            enableSounds = builder
+                    .comment("Enable audio feedback")
+                    .define("enableSounds", true);
+
+            soundVolume = builder
+                    .comment("Volume level for lock-on sounds")
+                    .defineInRange("soundVolume", 1.0, 0.0, 2.0);
+
+            lockOnSound = builder
+                    .comment("Play sound when locking onto target")
+                    .define("lockOnSound", true);
+
+            targetSwitchSound = builder
+                    .comment("Play sound when switching targets")
+                    .define("targetSwitchSound", true);
+
+            targetLostSound = builder
+                    .comment("Play sound when losing target")
+                    .define("targetLostSound", true);
 
             builder.pop();
 
-            // === KEYBINDING SETTINGS ===
-            builder.comment("Keybinding Behavior Settings").push("keybinds");
+            // === KEYBINDING BEHAVIOR ===
+            builder.comment("Keybinding Behavior")
+                    .push("keybinds");
 
             holdToMaintainLock = builder
-                    .comment("Require holding key to maintain lock")
+                    .comment("Require holding key to maintain target lock")
                     .define("holdToMaintainLock", false);
 
             toggleMode = builder
-                    .comment("Toggle lock-on instead of hold")
+                    .comment("Use toggle mode (press once to lock, press again to unlock)")
                     .define("toggleMode", true);
 
             cycleThroughTargets = builder
-                    .comment("Allow cycling through multiple targets")
+                    .comment("Enable cycling through multiple targets")
                     .define("cycleThroughTargets", true);
 
             reverseScrollCycling = builder
-                    .comment("Reverse direction when cycling targets")
+                    .comment("Reverse scroll direction for target cycling")
                     .define("reverseScrollCycling", false);
 
             builder.pop();
 
             // === PERFORMANCE SETTINGS ===
-            builder.comment("Performance Settings").push("performance");
+            builder.comment("Performance Settings")
+                    .push("performance");
 
             updateFrequency = builder
-                    .comment("How often to update targeting (ticks, lower = more responsive)")
+                    .comment("Update frequency in ticks (lower = more responsive)")
                     .defineInRange("updateFrequency", 1, 1, 20);
 
             maxTargetsToSearch = builder
-                    .comment("Maximum number of entities to consider when targeting")
-                    .defineInRange("maxTargetsToSearch", 50, 10, 200);
+                    .comment("Maximum number of targets to search")
+                    .defineInRange("maxTargetsToSearch", 50, 5, 200);
 
             disableInCreative = builder
                     .comment("Disable lock-on in creative mode")
@@ -401,156 +424,167 @@ public class LockOnConfig {
                     .define("disableInSpectator", true);
 
             builder.pop();
-            builder.pop(); // End general
         }
     }
 
-    // === ENUMS FOR CONFIGURATION ===
+    // === ENUMS ===
     public enum TargetingMode {
-        CLOSEST("Closest"),
-        MOST_DAMAGED("Most Damaged"),
-        CROSSHAIR_CENTERED("Crosshair Centered"),
-        THREAT_LEVEL("Threat Level");
-
-        private final String displayName;
-
-        TargetingMode(String displayName) {
-            this.displayName = displayName;
-        }
-
-        public String getDisplayName() {
-            return displayName;
-        }
+        CLOSEST,
+        MOST_DAMAGED,
+        CROSSHAIR_CENTERED,
+        THREAT_LEVEL,
+        SMART
     }
 
     public enum IndicatorType {
-        CIRCLE("Circle"),
-        CROSSHAIR("Crosshair"),
-        DIAMOND("Diamond"),
-        SQUARE("Square"),
-        CUSTOM("Custom");
-
-        private final String displayName;
-
-        IndicatorType(String displayName) {
-            this.displayName = displayName;
-        }
-
-        public String getDisplayName() {
-            return displayName;
-        }
+        CIRCLE,
+        CROSSHAIR,
+        DIAMOND,
+        SQUARE,
+        CUSTOM
     }
 
     public enum DistanceUnit {
-        BLOCKS("Blocks"),
-        METERS("Meters");
-
-        private final String displayName;
-
-        DistanceUnit(String displayName) {
-            this.displayName = displayName;
-        }
-
-        public String getDisplayName() {
-            return displayName;
-        }
+        BLOCKS,
+        METERS
     }
 
-    // === HELPER METHODS ===
-    public static float getMaxLockOnDistance() { return CLIENT.maxLockOnDistance.get().floatValue(); }
-    public static float getSearchRadius() { return CLIENT.searchRadius.get().floatValue(); }
+    // === STATIC ACCESSORS ===
+
+    // Targeting Settings
+    public static double getMaxLockOnDistance() {
+        double baseDistance = CLIENT.maxLockOnDistance.get();
+        if (ThirdPersonCompatibility.isThirdPersonActive() && CLIENT.enableThirdPersonEnhancements.get()) {
+            return ThirdPersonCompatibility.getAdjustedTargetingRange(baseDistance);
+        }
+        return baseDistance;
+    }
+
+    public static double getSearchRadius() { return CLIENT.searchRadius.get(); }
     public static TargetingMode getTargetingMode() { return CLIENT.targetingMode.get(); }
     public static boolean requireLineOfSight() { return CLIENT.requireLineOfSight.get(); }
-    public static boolean canPenetrateGlass() { return CLIENT.penetrateGlass.get(); }
-    public static float getTargetingAngle() { return CLIENT.targetingAngle.get().floatValue(); }
-    public static boolean isSmartTargeting() { return CLIENT.smartTargeting.get(); }
-    public static float getHealthPriorityWeight() { return CLIENT.healthPriorityWeight.get().floatValue(); }
-    public static float getDistancePriorityWeight() { return CLIENT.distancePriorityWeight.get().floatValue(); }
-    public static float getAnglePriorityWeight() { return CLIENT.anglePriorityWeight.get().floatValue(); }
+    public static boolean penetrateGlass() { return CLIENT.penetrateGlass.get(); }
 
+    public static double getTargetingAngle() {
+        double baseAngle = CLIENT.targetingAngle.get();
+        if (ThirdPersonCompatibility.isThirdPersonActive() && CLIENT.enableThirdPersonEnhancements.get()) {
+            return ThirdPersonCompatibility.getAdjustedTargetingAngle(baseAngle);
+        }
+        return baseAngle;
+    }
+
+    public static boolean isSmartTargetingEnabled() { return CLIENT.smartTargeting.get(); }
+    public static double getHealthPriorityWeight() { return CLIENT.healthPriorityWeight.get(); }
+    public static double getDistancePriorityWeight() { return CLIENT.distancePriorityWeight.get(); }
+    public static double getAnglePriorityWeight() { return CLIENT.anglePriorityWeight.get(); }
+
+    // Third Person Settings
+    public static boolean areThirdPersonEnhancementsEnabled() { return CLIENT.enableThirdPersonEnhancements.get(); }
+    public static double getThirdPersonRangeMultiplier() { return CLIENT.thirdPersonRangeMultiplier.get(); }
+    public static double getThirdPersonAngleMultiplier() { return CLIENT.thirdPersonAngleMultiplier.get(); }
+    public static double getThirdPersonSmoothingFactor() { return CLIENT.thirdPersonSmoothingFactor.get(); }
+    public static double getThirdPersonRotationSpeedMultiplier() { return CLIENT.thirdPersonRotationSpeedMultiplier.get(); }
+    public static double getThirdPersonIndicatorSizeMultiplier() { return CLIENT.thirdPersonIndicatorSizeMultiplier.get(); }
+    public static boolean shouldAdjustForCameraOffset() { return CLIENT.adjustForCameraOffset.get(); }
+    public static boolean isEnhancedThirdPersonSmoothingEnabled() { return CLIENT.enhancedThirdPersonSmoothing.get(); }
+    public static boolean isAutoDetectThirdPersonEnabled() { return CLIENT.autoDetectThirdPerson.get(); }
+
+    // Camera Settings
     public static float getRotationSpeed() { return CLIENT.rotationSpeed.get().floatValue(); }
     public static float getMinRotationSpeed() { return CLIENT.minRotationSpeed.get().floatValue(); }
     public static float getMaxRotationSpeed() { return CLIENT.maxRotationSpeed.get().floatValue(); }
-    public static float getDistanceWeight() { return CLIENT.distanceWeight.get().floatValue(); }
-    public static boolean isSmoothCameraEnabled() { return CLIENT.enableSmoothCamera.get(); }
-    public static float getSmoothingFactor() { return CLIENT.smoothingFactor.get().floatValue(); }
-    public static boolean isPredictiveTargeting() { return CLIENT.predictiveTargeting.get(); }
-    public static float getPredictionStrength() { return CLIENT.predictionStrength.get().floatValue(); }
-    public static boolean autoBreakOnObstruction() { return CLIENT.autoBreakOnObstruction.get(); }
-    public static float getCameraOffset() { return CLIENT.cameraOffset.get().floatValue(); }
+    public static boolean isSmoothCameraEnabled() { return CLIENT.smoothCameraEnabled.get(); }
+    public static float getCameraSmoothness() { return CLIENT.cameraSmoothness.get().floatValue(); }
+    public static boolean isAdaptiveRotationEnabled() { return CLIENT.adaptiveRotationEnabled.get(); }
+    public static boolean isPredictiveTargetingEnabled() { return CLIENT.predictiveTargeting.get(); }
+    public static boolean isAutoBreakOnObstructionEnabled() { return CLIENT.autoBreakOnObstruction.get(); }
 
+    // Visual Settings
     public static IndicatorType getIndicatorType() { return CLIENT.indicatorType.get(); }
-    public static String getCustomIndicatorName() {return CLIENT.customIndicatorName.get();}
-    public static boolean isCustomIndicatorCyclingEnabled() {return CLIENT.enableCustomIndicatorCycling.get();}
-    public static void setCustomIndicatorName(String name) {CLIENT.customIndicatorName.set(name);}
-    public static float getIndicatorSize() { return CLIENT.indicatorSize.get().floatValue(); }
-    public static float getPulseSpeed() { return CLIENT.pulseSpeed.get().floatValue(); }
-    public static float getPulseAmplitude() { return CLIENT.pulseAmplitude.get().floatValue(); }
-    public static boolean isPulseEnabled() { return CLIENT.enablePulse.get(); }
-    public static boolean isGlowEnabled() { return CLIENT.enableGlow.get(); }
-    public static float getGlowIntensity() { return CLIENT.glowIntensity.get().floatValue(); }
+    public static float getIndicatorSize() {
+        float baseSize = CLIENT.indicatorSize.get().floatValue();
+        if (ThirdPersonCompatibility.isThirdPersonActive() && CLIENT.enableThirdPersonEnhancements.get()) {
+            return ThirdPersonCompatibility.getAdjustedIndicatorSize(baseSize);
+        }
+        return baseSize;
+    }
+    public static boolean isPulseEnabled() { return CLIENT.pulseEnabled.get(); }
+    public static boolean isGlowEnabled() { return CLIENT.glowEnabled.get(); }
+    public static boolean showTargetDistance() { return CLIENT.showTargetDistance.get(); }
+    public static boolean showTargetHealth() { return CLIENT.showTargetHealth.get(); }
+    public static boolean showTargetName() { return CLIENT.showTargetName.get(); }
+
+    // Legacy method compatibility
     public static boolean showDistance() { return CLIENT.showDistance.get(); }
     public static boolean showHealthBar() { return CLIENT.showHealthBar.get(); }
-    public static boolean showTargetName() { return CLIENT.showTargetName.get(); }
     public static DistanceUnit getDistanceUnit() { return CLIENT.distanceUnit.get(); }
 
-    public static Color getIndicatorColor() {
-        return new Color(CLIENT.indicatorColorRed.get(), CLIENT.indicatorColorGreen.get(),
-                CLIENT.indicatorColorBlue.get(), CLIENT.indicatorColorAlpha.get());
-    }
+    // Color Settings
+    public static Color getIndicatorColor() { return parseColor(CLIENT.indicatorColorHex.get(), Color.ORANGE); }
+    public static Color getOutlineColor() { return parseColor(CLIENT.outlineColorHex.get(), Color.WHITE); }
+    public static Color getTextColor() { return parseColor(CLIENT.textColorHex.get(), Color.WHITE); }
+    public static boolean isDynamicHealthColorEnabled() { return CLIENT.dynamicHealthColorEnabled.get(); }
+    public static boolean isDynamicDistanceColorEnabled() { return CLIENT.dynamicDistanceColorEnabled.get(); }
 
-    public static Color getOutlineColor() {
-        return new Color(CLIENT.outlineColorRed.get(), CLIENT.outlineColorGreen.get(),
-                CLIENT.outlineColorBlue.get(), CLIENT.outlineColorAlpha.get());
-    }
-
-    public static Color getTextColor() {
-        return new Color(CLIENT.textColorRed.get(), CLIENT.textColorGreen.get(),
-                CLIENT.textColorBlue.get(), CLIENT.textColorAlpha.get());
-    }
-
-    public static boolean isDynamicColorBasedOnHealth() { return CLIENT.dynamicColorBasedOnHealth.get(); }
-    public static boolean isDynamicColorBasedOnDistance() { return CLIENT.dynamicColorBasedOnDistance.get(); }
-
-    public static boolean canTargetPlayers() { return CLIENT.targetPlayers.get(); }
-    public static boolean canTargetHostileMobs() { return CLIENT.targetHostileMobs.get(); }
-    public static boolean canTargetPassiveMobs() { return CLIENT.targetPassiveMobs.get(); }
-    public static boolean canTargetNeutralMobs() { return CLIENT.targetNeutralMobs.get(); }
-    public static boolean canTargetBosses() { return CLIENT.targetBosses.get(); }
-    public static boolean canTargetUndead() { return CLIENT.targetUndead.get(); }
-    public static boolean canTargetAnimals() { return CLIENT.targetAnimals.get(); }
-    public static boolean canTargetVillagers() { return CLIENT.targetVillagers.get(); }
-    public static boolean canTargetTameable() { return CLIENT.targetTameable.get(); }
-    public static boolean canTargetOwned() { return CLIENT.targetOwned.get(); }
-    public static float getMinTargetHealth() { return CLIENT.minTargetHealth.get().floatValue(); }
-    public static float getMaxTargetHealth() { return CLIENT.maxTargetHealth.get().floatValue(); }
+    // Filter Settings
+    public static boolean canTargetPlayers() { return CLIENT.canTargetPlayers.get(); }
+    public static boolean canTargetHostileMobs() { return CLIENT.canTargetHostileMobs.get(); }
+    public static boolean canTargetPassiveMobs() { return CLIENT.canTargetPassiveMobs.get(); }
+    public static boolean canTargetBosses() { return CLIENT.canTargetBosses.get(); }
+    public static double getMinTargetHealth() { return CLIENT.minTargetHealth.get(); }
+    public static double getMaxTargetHealth() { return CLIENT.maxTargetHealth.get(); }
     public static List<? extends String> getEntityBlacklist() { return CLIENT.entityBlacklist.get(); }
     public static List<? extends String> getEntityWhitelist() { return CLIENT.entityWhitelist.get(); }
     public static boolean useWhitelist() { return CLIENT.useWhitelist.get(); }
 
+    // Audio Settings
     public static boolean areSoundsEnabled() { return CLIENT.enableSounds.get(); }
     public static float getSoundVolume() { return CLIENT.soundVolume.get().floatValue(); }
     public static boolean playLockOnSound() { return CLIENT.lockOnSound.get(); }
     public static boolean playTargetSwitchSound() { return CLIENT.targetSwitchSound.get(); }
     public static boolean playTargetLostSound() { return CLIENT.targetLostSound.get(); }
 
+    // Keybinding Settings
     public static boolean holdToMaintainLock() { return CLIENT.holdToMaintainLock.get(); }
     public static boolean isToggleMode() { return CLIENT.toggleMode.get(); }
     public static boolean canCycleThroughTargets() { return CLIENT.cycleThroughTargets.get(); }
     public static boolean reverseScrollCycling() { return CLIENT.reverseScrollCycling.get(); }
 
+    // Performance Settings
     public static int getUpdateFrequency() { return CLIENT.updateFrequency.get(); }
     public static int getMaxTargetsToSearch() { return CLIENT.maxTargetsToSearch.get(); }
     public static boolean disableInCreative() { return CLIENT.disableInCreative.get(); }
     public static boolean disableInSpectator() { return CLIENT.disableInSpectator.get(); }
 
+    /**
+     * Parse color from hex string
+     */
+    private static Color parseColor(String hex, Color fallback) {
+        try {
+            if (hex.startsWith("#")) {
+                hex = hex.substring(1);
+            }
+
+            if (hex.length() == 6) {
+                return new Color(Integer.parseInt(hex, 16));
+            } else if (hex.length() == 8) {
+                return new Color(Integer.parseUnsignedInt(hex, 16), true);
+            }
+        } catch (NumberFormatException e) {
+            LockOnMod.LOGGER.warn("Invalid color format: {}, using fallback", hex);
+        }
+        return fallback;
+    }
+
     @SubscribeEvent
     public static void onLoad(final ModConfigEvent.Loading configEvent) {
         LockOnMod.LOGGER.debug("Loaded Enhanced Target Lock Mod config file {}", configEvent.getConfig().getFileName());
+        LockOnMod.LOGGER.info("Third Person Compatibility Status: {}", ThirdPersonCompatibility.getCompatibilityStatus());
     }
 
     @SubscribeEvent
     public static void onReload(final ModConfigEvent.Reloading configEvent) {
         LockOnMod.LOGGER.debug("Enhanced Target Lock Mod config reloaded");
+        LockOnMod.LOGGER.info("Third Person Compatibility Status: {}", ThirdPersonCompatibility.getCompatibilityStatus());
     }
 }
