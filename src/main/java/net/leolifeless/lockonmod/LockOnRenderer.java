@@ -3,107 +3,229 @@ package net.leolifeless.lockonmod;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
 import com.mojang.math.Matrix4f;
-import com.mojang.math.Vector3f;
+import net.leolifeless.lockonmod.compat.ThirdPersonCompatibility;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.phys.Vec3;
-import net.minecraftforge.client.event.RenderLevelStageEvent;
 
-import java.awt.*;
+import java.awt.Color;
 
-import static net.leolifeless.lockonmod.LockOnMod.MOD_ID;
-
+/**
+ * Enhanced renderer with third person compatibility
+ */
 public class LockOnRenderer {
-    // Animation variables
-    private static long lastTime = 0;
-    private static float pulseSize = 0.0F;
-    private static float glowSize = 0.0F;
-    private static float rotationAngle = 0.0F;
 
-    // Custom texture for the indicator
-    private static final ResourceLocation CUSTOM_INDICATOR_TEXTURE =
-            ResourceLocation.fromNamespaceAndPath(MOD_ID, "textures/gui/custom_indicator.png");
+    private static final ResourceLocation CROSSHAIR_TEXTURE = ResourceLocation.fromNamespaceAndPath(LockOnMod.MOD_ID, "textures/gui/crosshair.png");
+    private static final ResourceLocation CIRCLE_TEXTURE = ResourceLocation.fromNamespaceAndPath(LockOnMod.MOD_ID, "textures/gui/circle.png");
+    private static final ResourceLocation DIAMOND_TEXTURE = ResourceLocation.fromNamespaceAndPath(LockOnMod.MOD_ID, "textures/gui/diamond.png");
+    private static final ResourceLocation SQUARE_TEXTURE = ResourceLocation.fromNamespaceAndPath(LockOnMod.MOD_ID, "textures/gui/square.png");
+
+    // Animation variables
+    private static long animationTime = 0;
+    private static float pulsePhase = 0.0f;
 
     /**
-     * Main rendering method with enhanced features - now only renders the indicator
+     * Enhanced indicator rendering with third person support
      */
-    public static void renderLockOnIndicator(RenderLevelStageEvent event, Entity target) {
-        Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.level == null || minecraft.player == null || target == null) return;
+    public static void renderLockOnIndicator(PoseStack poseStack, Entity target, Vec3 targetPos,
+                                             float baseSize, LockOnConfig.IndicatorType type,
+                                             boolean isThirdPerson) {
 
-        // Update animations
-        updateAnimations();
+        if (target == null || !target.isAlive()) return;
 
-        // Get the camera position
-        Vec3 cameraPos = minecraft.gameRenderer.getMainCamera().getPosition();
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null) return;
 
-        // Get position of the entity with configurable offset
-        float heightOffset = LockOnConfig.getCameraOffset();
-        Vec3 targetPos = target.position().add(0, target.getBbHeight() * heightOffset, 0);
+        // Update animation
+        updateAnimation();
 
-        // Calculate relative position
-        double x = targetPos.x - cameraPos.x;
-        double y = targetPos.y - cameraPos.y;
-        double z = targetPos.z - cameraPos.z;
+        // Calculate adjusted size for third person
+        float adjustedSize = baseSize;
+        if (isThirdPerson) {
+            adjustedSize = ThirdPersonCompatibility.getAdjustedIndicatorSize(baseSize);
+        }
 
-        // Set up rendering
-        PoseStack poseStack = event.getPoseStack();
-        poseStack.pushPose();
+        // Calculate distance-based scaling
+        double distance = mc.player.distanceTo(target);
+        float distanceScale = calculateDistanceScale(distance, isThirdPerson);
+        adjustedSize *= distanceScale;
 
-        // Move to the target position
-        poseStack.translate(x, y, z);
-
-        // Make the indicator always face the camera
-        poseStack.mulPose(minecraft.gameRenderer.getMainCamera().rotation());
-        poseStack.mulPose(Vector3f.YP.rotationDegrees(180f));
-
-        // Set up render system
-        RenderSystem.disableDepthTest();
-        RenderSystem.disableCull();
-        RenderSystem.enableBlend();
-        RenderSystem.defaultBlendFunc();
-
-        // Calculate dynamic size
-        float indicatorSize = LockOnConfig.getIndicatorSize();
-        float animatedSize = indicatorSize;
-
+        // Apply pulse animation if enabled
         if (LockOnConfig.isPulseEnabled()) {
-            animatedSize += pulseSize;
+            float pulseScale = 1.0f + (0.2f * (float)Math.sin(pulsePhase));
+            adjustedSize *= pulseScale;
         }
 
-        // Calculate dynamic color
-        Color indicatorColor = calculateDynamicColor(target, minecraft.player.distanceTo(target));
+        // Calculate colors
+        Color primaryColor = calculateIndicatorColor(target, distance, isThirdPerson);
+        Color outlineColor = calculateOutlineColor(target, distance, isThirdPerson);
 
-        // Render glow effect if enabled
-        if (LockOnConfig.isGlowEnabled()) {
-            renderGlowEffect(poseStack, animatedSize, indicatorColor);
-        }
-
-        // Render main indicator based on type
-        LockOnConfig.IndicatorType type = LockOnConfig.getIndicatorType();
+        // Render the indicator
         switch (type) {
             case CIRCLE:
-                renderCircleIndicator(poseStack, animatedSize, indicatorColor);
+                renderCircleIndicator(poseStack, targetPos, adjustedSize, primaryColor, outlineColor, isThirdPerson);
                 break;
             case CROSSHAIR:
-                renderCrosshairIndicator(poseStack, animatedSize, indicatorColor);
+                renderCrosshairIndicator(poseStack, targetPos, adjustedSize, primaryColor, outlineColor, isThirdPerson);
                 break;
             case DIAMOND:
-                renderDiamondIndicator(poseStack, animatedSize, indicatorColor);
+                renderDiamondIndicator(poseStack, targetPos, adjustedSize, primaryColor, outlineColor, isThirdPerson);
                 break;
             case SQUARE:
-                renderSquareIndicator(poseStack, animatedSize, indicatorColor);
+                renderSquareIndicator(poseStack, targetPos, adjustedSize, primaryColor, outlineColor, isThirdPerson);
                 break;
             case CUSTOM:
-                renderCustomIndicator(poseStack, animatedSize, indicatorColor);
+                renderCustomIndicator(poseStack, targetPos, adjustedSize, primaryColor, outlineColor, isThirdPerson);
                 break;
         }
 
-        // Clean up rendering
-        RenderSystem.enableCull();
+        // Render additional info if enabled
+        if (LockOnConfig.showTargetName() || LockOnConfig.showTargetHealth() || LockOnConfig.showTargetDistance()) {
+            renderTargetInfo(poseStack, target, targetPos, adjustedSize, isThirdPerson);
+        }
+    }
+
+    /**
+     * Calculate distance-based scaling with third person adjustments
+     */
+    private static float calculateDistanceScale(double distance, boolean isThirdPerson) {
+        float minScale = 0.5f;
+        float maxScale = 2.0f;
+        double maxDistance = LockOnConfig.getMaxLockOnDistance();
+
+        // Adjust max distance for third person
+        if (isThirdPerson) {
+            maxDistance = ThirdPersonCompatibility.getAdjustedTargetingRange(maxDistance);
+        }
+
+        // Linear scaling based on distance
+        float scale = (float)(1.0 + (distance / maxDistance));
+        return Math.max(minScale, Math.min(maxScale, scale));
+    }
+
+    /**
+     * Calculate indicator color with dynamic options
+     */
+    private static Color calculateIndicatorColor(Entity target, double distance, boolean isThirdPerson) {
+        Color baseColor = LockOnConfig.getIndicatorColor();
+
+        // Dynamic health coloring
+        if (LockOnConfig.isDynamicHealthColorEnabled() && target instanceof LivingEntity) {
+            LivingEntity living = (LivingEntity) target;
+            float healthPercent = living.getHealth() / living.getMaxHealth();
+
+            if (healthPercent > 0.6f) {
+                baseColor = Color.GREEN;
+            } else if (healthPercent > 0.3f) {
+                baseColor = Color.ORANGE;
+            } else {
+                baseColor = Color.RED;
+            }
+        }
+
+        // Dynamic distance coloring
+        if (LockOnConfig.isDynamicDistanceColorEnabled()) {
+            double maxDistance = LockOnConfig.getMaxLockOnDistance();
+            if (isThirdPerson) {
+                maxDistance = ThirdPersonCompatibility.getAdjustedTargetingRange(maxDistance);
+            }
+
+            float distancePercent = (float)(distance / maxDistance);
+
+            if (distancePercent < 0.3f) {
+                baseColor = Color.CYAN;
+            } else if (distancePercent < 0.7f) {
+                baseColor = Color.YELLOW;
+            } else {
+                baseColor = Color.MAGENTA;
+            }
+        }
+
+        // Third person color adjustment (slightly more transparent)
+        if (isThirdPerson) {
+            int alpha = Math.max(100, baseColor.getAlpha() - 30);
+            baseColor = new Color(baseColor.getRed(), baseColor.getGreen(), baseColor.getBlue(), alpha);
+        }
+
+        return baseColor;
+    }
+
+    /**
+     * Calculate outline color
+     */
+    private static Color calculateOutlineColor(Entity target, double distance, boolean isThirdPerson) {
+        Color baseOutline = LockOnConfig.getOutlineColor();
+
+        // Make outline more prominent in third person
+        if (isThirdPerson) {
+            int alpha = Math.min(255, baseOutline.getAlpha() + 50);
+            baseOutline = new Color(baseOutline.getRed(), baseOutline.getGreen(), baseOutline.getBlue(), alpha);
+        }
+
+        return baseOutline;
+    }
+
+    /**
+     * Render circle indicator
+     */
+    private static void renderCircleIndicator(PoseStack poseStack, Vec3 pos, float size,
+                                              Color color, Color outline, boolean isThirdPerson) {
+        poseStack.pushPose();
+
+        // Setup rendering
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+        RenderSystem.disableDepthTest();
+        RenderSystem.setShader(GameRenderer::getPositionColorShader);
+
+        // Create circle vertices
+        Tesselator tesselator = Tesselator.getInstance();
+        BufferBuilder buffer = tesselator.getBuilder();
+
+        Matrix4f matrix = poseStack.last().pose();
+
+        // Render outline first
+        if (outline.getAlpha() > 0) {
+            buffer.begin(VertexFormat.Mode.TRIANGLE_FAN, DefaultVertexFormat.POSITION_COLOR);
+            buffer.vertex(matrix, (float)pos.x, (float)pos.y, (float)pos.z)
+                    .color(outline.getRed(), outline.getGreen(), outline.getBlue(), outline.getAlpha())
+                    .endVertex();
+
+            int segments = isThirdPerson ? 32 : 24; // More segments for third person
+            for (int i = 0; i <= segments; i++) {
+                float angle = (float)(2 * Math.PI * i / segments);
+                float x = (float)(pos.x + Math.cos(angle) * size * 1.1f);
+                float y = (float)(pos.y + Math.sin(angle) * size * 1.1f);
+                buffer.vertex(matrix, x, y, (float)pos.z)
+                        .color(outline.getRed(), outline.getGreen(), outline.getBlue(), outline.getAlpha())
+                        .endVertex();
+            }
+
+            tesselator.end();
+        }
+
+        // Render main circle
+        buffer.begin(VertexFormat.Mode.TRIANGLE_FAN, DefaultVertexFormat.POSITION_COLOR);
+        buffer.vertex(matrix, (float)pos.x, (float)pos.y, (float)pos.z)
+                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
+                .endVertex();
+
+        int segments = isThirdPerson ? 32 : 24;
+        for (int i = 0; i <= segments; i++) {
+            float angle = (float)(2 * Math.PI * i / segments);
+            float x = (float)(pos.x + Math.cos(angle) * size);
+            float y = (float)(pos.y + Math.sin(angle) * size);
+            buffer.vertex(matrix, x, y, (float)pos.z)
+                    .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
+                    .endVertex();
+        }
+
+        tesselator.end();
+
+        // Cleanup
         RenderSystem.enableDepthTest();
         RenderSystem.disableBlend();
 
@@ -111,372 +233,221 @@ public class LockOnRenderer {
     }
 
     /**
-     * Renders custom image indicator with rotation and color tinting
+     * Render crosshair indicator
      */
-    private static void renderCustomIndicator(PoseStack poseStack, float size, Color color) {
+    private static void renderCrosshairIndicator(PoseStack poseStack, Vec3 pos, float size,
+                                                 Color color, Color outline, boolean isThirdPerson) {
         poseStack.pushPose();
 
-        // Apply rotation animation
-        poseStack.mulPose(Vector3f.ZP.rotationDegrees(rotationAngle));
-
-        // Get the current custom indicator texture
-        ResourceLocation texture = CustomIndicatorManager.getCurrentIndicatorTexture();
-
-        // Set up texture rendering
-        RenderSystem.setShader(GameRenderer::getPositionTexColorShader);
-        RenderSystem.setShaderTexture(0, texture);
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
+        RenderSystem.disableDepthTest();
+        RenderSystem.setShader(GameRenderer::getPositionColorShader);
 
-        BufferBuilder bufferBuilder = Tesselator.getInstance().getBuilder();
+        Tesselator tesselator = Tesselator.getInstance();
+        BufferBuilder buffer = tesselator.getBuilder();
         Matrix4f matrix = poseStack.last().pose();
 
-        bufferBuilder.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX_COLOR);
+        float thickness = isThirdPerson ? size * 0.15f : size * 0.1f;
+        float length = size;
 
-        // Define the quad vertices for the texture
-        float halfSize = size;
+        // Render crosshair lines
+        buffer.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
 
-        // Bottom-left
-        bufferBuilder.vertex(matrix, -halfSize, -halfSize, 0.0F)
-                .uv(0.0F, 1.0F)  // Bottom-left UV
-                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
-                .endVertex();
+        // Horizontal line
+        buffer.vertex(matrix, (float)(pos.x - length), (float)(pos.y - thickness), (float)pos.z)
+                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha()).endVertex();
+        buffer.vertex(matrix, (float)(pos.x + length), (float)(pos.y - thickness), (float)pos.z)
+                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha()).endVertex();
+        buffer.vertex(matrix, (float)(pos.x + length), (float)(pos.y + thickness), (float)pos.z)
+                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha()).endVertex();
+        buffer.vertex(matrix, (float)(pos.x - length), (float)(pos.y + thickness), (float)pos.z)
+                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha()).endVertex();
 
-        // Bottom-right
-        bufferBuilder.vertex(matrix, halfSize, -halfSize, 0.0F)
-                .uv(1.0F, 1.0F)  // Bottom-right UV
-                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
-                .endVertex();
+        // Vertical line
+        buffer.vertex(matrix, (float)(pos.x - thickness), (float)(pos.y - length), (float)pos.z)
+                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha()).endVertex();
+        buffer.vertex(matrix, (float)(pos.x + thickness), (float)(pos.y - length), (float)pos.z)
+                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha()).endVertex();
+        buffer.vertex(matrix, (float)(pos.x + thickness), (float)(pos.y + length), (float)pos.z)
+                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha()).endVertex();
+        buffer.vertex(matrix, (float)(pos.x - thickness), (float)(pos.y + length), (float)pos.z)
+                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha()).endVertex();
 
-        // Top-right
-        bufferBuilder.vertex(matrix, halfSize, halfSize, 0.0F)
-                .uv(1.0F, 0.0F)  // Top-right UV
-                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
-                .endVertex();
+        tesselator.end();
 
-        // Top-left
-        bufferBuilder.vertex(matrix, -halfSize, halfSize, 0.0F)
-                .uv(0.0F, 0.0F)  // Top-left UV
-                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
-                .endVertex();
-
-        BufferUploader.drawWithShader(bufferBuilder.end());
+        RenderSystem.enableDepthTest();
+        RenderSystem.disableBlend();
 
         poseStack.popPose();
     }
 
     /**
-     * Updates all animation effects
+     * Render diamond indicator
      */
-    private static void updateAnimations() {
-        long currentTime = System.currentTimeMillis();
+    private static void renderDiamondIndicator(PoseStack poseStack, Vec3 pos, float size,
+                                               Color color, Color outline, boolean isThirdPerson) {
+        poseStack.pushPose();
 
-        // First time initialization
-        if (lastTime == 0) {
-            lastTime = currentTime;
-        }
-
-        float deltaTime = (currentTime - lastTime) / 1000.0F;
-
-        // Calculate pulse effect
-        if (LockOnConfig.isPulseEnabled()) {
-            float pulseSpeed = LockOnConfig.getPulseSpeed();
-            float pulseAmplitude = LockOnConfig.getPulseAmplitude();
-            float time = currentTime / 1000.0F * pulseSpeed;
-            pulseSize = (float) Math.sin(time) * pulseAmplitude;
-        }
-
-        // Calculate glow effect
-        if (LockOnConfig.isGlowEnabled()) {
-            float glowSpeed = LockOnConfig.getPulseSpeed() * 0.7F;
-            float time = currentTime / 1000.0F * glowSpeed;
-            glowSize = (float) Math.sin(time * 0.5) * LockOnConfig.getGlowIntensity();
-        }
-
-        // Calculate rotation for animated indicators
-        rotationAngle += deltaTime * 45.0F; // 45 degrees per second
-        if (rotationAngle >= 360.0F) {
-            rotationAngle -= 360.0F;
-        }
-
-        lastTime = currentTime;
-    }
-
-    /**
-     * Calculates dynamic color based on configuration
-     */
-    private static Color calculateDynamicColor(Entity target, float distance) {
-        Color baseColor = LockOnConfig.getIndicatorColor();
-
-        if (LockOnConfig.isDynamicColorBasedOnHealth() && target instanceof LivingEntity) {
-            LivingEntity living = (LivingEntity) target;
-            float healthPercent = living.getHealth() / living.getMaxHealth();
-
-            // Interpolate from red (low health) to green (high health)
-            int red = (int) (255 * (1 - healthPercent) + baseColor.getRed() * healthPercent);
-            int green = (int) (255 * healthPercent + baseColor.getGreen() * (1 - healthPercent));
-            int blue = baseColor.getBlue();
-
-            baseColor = new Color(Math.min(255, red), Math.min(255, green), blue, baseColor.getAlpha());
-        }
-
-        if (LockOnConfig.isDynamicColorBasedOnDistance()) {
-            float maxDistance = LockOnConfig.getMaxLockOnDistance();
-            float distancePercent = Math.min(1.0F, distance / maxDistance);
-
-            // Interpolate from blue (close) to red (far)
-            int red = (int) (255 * distancePercent + baseColor.getRed() * (1 - distancePercent));
-            int green = baseColor.getGreen();
-            int blue = (int) (255 * (1 - distancePercent) + baseColor.getBlue() * distancePercent);
-
-            baseColor = new Color(Math.min(255, red), green, Math.min(255, blue), baseColor.getAlpha());
-        }
-
-        return baseColor;
-    }
-
-    /**
-     * Renders glow effect around the indicator
-     */
-    private static void renderGlowEffect(PoseStack poseStack, float size, Color color) {
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+        RenderSystem.disableDepthTest();
         RenderSystem.setShader(GameRenderer::getPositionColorShader);
 
-        float glowRadius = size * (1.5F + glowSize);
-        Color glowColor = new Color(color.getRed(), color.getGreen(), color.getBlue(),
-                Math.max(10, color.getAlpha() / 4));
-
-        BufferBuilder bufferBuilder = Tesselator.getInstance().getBuilder();
+        Tesselator tesselator = Tesselator.getInstance();
+        BufferBuilder buffer = tesselator.getBuilder();
         Matrix4f matrix = poseStack.last().pose();
-
-        bufferBuilder.begin(VertexFormat.Mode.TRIANGLE_FAN, DefaultVertexFormat.POSITION_COLOR);
-
-        // Center vertex
-        bufferBuilder.vertex(matrix, 0.0F, 0.0F, 0.0F)
-                .color(glowColor.getRed(), glowColor.getGreen(), glowColor.getBlue(), 0)
-                .endVertex();
-
-        // Glow circle
-        int segments = 24;
-        for (int i = 0; i <= segments; i++) {
-            float angle = (float) (i * 2 * Math.PI / segments);
-            float x = (float) Math.cos(angle) * glowRadius;
-            float y = (float) Math.sin(angle) * glowRadius;
-
-            bufferBuilder.vertex(matrix, x, y, 0.0F)
-                    .color(glowColor.getRed(), glowColor.getGreen(), glowColor.getBlue(), glowColor.getAlpha())
-                    .endVertex();
-        }
-
-        BufferUploader.drawWithShader(bufferBuilder.end());
-    }
-
-    /**
-     * Renders circle indicator (original)
-     */
-    private static void renderCircleIndicator(PoseStack poseStack, float size, Color color) {
-        RenderSystem.setShader(GameRenderer::getPositionColorShader);
-
-        BufferBuilder bufferBuilder = Tesselator.getInstance().getBuilder();
-        Matrix4f matrix = poseStack.last().pose();
-
-        // Filled circle
-        bufferBuilder.begin(VertexFormat.Mode.TRIANGLE_FAN, DefaultVertexFormat.POSITION_COLOR);
-
-        Color centerColor = new Color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha() / 3);
-        bufferBuilder.vertex(matrix, 0.0F, 0.0F, 0.0F)
-                .color(centerColor.getRed(), centerColor.getGreen(), centerColor.getBlue(), centerColor.getAlpha())
-                .endVertex();
-
-        int segments = 36;
-        for (int i = 0; i <= segments; i++) {
-            float angle = (float) (i * 2 * Math.PI / segments);
-            float x = (float) Math.cos(angle) * size;
-            float y = (float) Math.sin(angle) * size;
-
-            bufferBuilder.vertex(matrix, x, y, 0.0F)
-                    .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
-                    .endVertex();
-        }
-
-        BufferUploader.drawWithShader(bufferBuilder.end());
-
-        // Outline
-        renderCircleOutline(poseStack, size, LockOnConfig.getOutlineColor());
-    }
-
-    /**
-     * Renders crosshair indicator
-     */
-    private static void renderCrosshairIndicator(PoseStack poseStack, float size, Color color) {
-        RenderSystem.setShader(GameRenderer::getPositionColorShader);
-
-        BufferBuilder bufferBuilder = Tesselator.getInstance().getBuilder();
-        Matrix4f matrix = poseStack.last().pose();
-
-        bufferBuilder.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
-
-        float thickness = size * 0.1F;
-        float length = size;
-
-        // Horizontal bar
-        bufferBuilder.vertex(matrix, -length, -thickness, 0.0F)
-                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
-                .endVertex();
-        bufferBuilder.vertex(matrix, length, -thickness, 0.0F)
-                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
-                .endVertex();
-        bufferBuilder.vertex(matrix, length, thickness, 0.0F)
-                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
-                .endVertex();
-        bufferBuilder.vertex(matrix, -length, thickness, 0.0F)
-                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
-                .endVertex();
-
-        // Vertical bar
-        bufferBuilder.vertex(matrix, -thickness, -length, 0.0F)
-                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
-                .endVertex();
-        bufferBuilder.vertex(matrix, thickness, -length, 0.0F)
-                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
-                .endVertex();
-        bufferBuilder.vertex(matrix, thickness, length, 0.0F)
-                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
-                .endVertex();
-        bufferBuilder.vertex(matrix, -thickness, length, 0.0F)
-                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
-                .endVertex();
-
-        BufferUploader.drawWithShader(bufferBuilder.end());
-    }
-
-    /**
-     * Renders diamond indicator
-     */
-    private static void renderDiamondIndicator(PoseStack poseStack, float size, Color color) {
-        RenderSystem.setShader(GameRenderer::getPositionColorShader);
-
-        BufferBuilder bufferBuilder = Tesselator.getInstance().getBuilder();
-        Matrix4f matrix = poseStack.last().pose();
-
-        bufferBuilder.begin(VertexFormat.Mode.TRIANGLE_FAN, DefaultVertexFormat.POSITION_COLOR);
-
-        // Center vertex
-        Color centerColor = new Color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha() / 3);
-        bufferBuilder.vertex(matrix, 0.0F, 0.0F, 0.0F)
-                .color(centerColor.getRed(), centerColor.getGreen(), centerColor.getBlue(), centerColor.getAlpha())
-                .endVertex();
 
         // Diamond vertices
-        bufferBuilder.vertex(matrix, 0.0F, size, 0.0F) // Top
-                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
-                .endVertex();
-        bufferBuilder.vertex(matrix, size, 0.0F, 0.0F) // Right
-                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
-                .endVertex();
-        bufferBuilder.vertex(matrix, 0.0F, -size, 0.0F) // Bottom
-                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
-                .endVertex();
-        bufferBuilder.vertex(matrix, -size, 0.0F, 0.0F) // Left
-                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
-                .endVertex();
-        bufferBuilder.vertex(matrix, 0.0F, size, 0.0F) // Close the shape
-                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
-                .endVertex();
+        Vec3[] vertices = {
+                new Vec3(pos.x, pos.y + size, pos.z),      // Top
+                new Vec3(pos.x + size, pos.y, pos.z),      // Right
+                new Vec3(pos.x, pos.y - size, pos.z),      // Bottom
+                new Vec3(pos.x - size, pos.y, pos.z)       // Left
+        };
 
-        BufferUploader.drawWithShader(bufferBuilder.end());
+        // Render diamond outline
+        if (outline.getAlpha() > 0) {
+            buffer.begin(VertexFormat.Mode.DEBUG_LINE_STRIP, DefaultVertexFormat.POSITION_COLOR);
+            for (int i = 0; i < vertices.length; i++) {
+                Vec3 vertex = vertices[i];
+                buffer.vertex(matrix, (float)vertex.x, (float)vertex.y, (float)vertex.z)
+                        .color(outline.getRed(), outline.getGreen(), outline.getBlue(), outline.getAlpha())
+                        .endVertex();
+            }
+            // Close the diamond
+            buffer.vertex(matrix, (float)vertices[0].x, (float)vertices[0].y, (float)vertices[0].z)
+                    .color(outline.getRed(), outline.getGreen(), outline.getBlue(), outline.getAlpha())
+                    .endVertex();
+            tesselator.end();
+        }
 
-        // Diamond outline
-        renderDiamondOutline(poseStack, size, LockOnConfig.getOutlineColor());
-    }
-
-    /**
-     * Renders square indicator
-     */
-    private static void renderSquareIndicator(PoseStack poseStack, float size, Color color) {
-        RenderSystem.setShader(GameRenderer::getPositionColorShader);
-
-        BufferBuilder bufferBuilder = Tesselator.getInstance().getBuilder();
-        Matrix4f matrix = poseStack.last().pose();
-
-        bufferBuilder.begin(VertexFormat.Mode.TRIANGLE_FAN, DefaultVertexFormat.POSITION_COLOR);
-
-        // Center vertex
-        Color centerColor = new Color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha() / 3);
-        bufferBuilder.vertex(matrix, 0.0F, 0.0F, 0.0F)
-                .color(centerColor.getRed(), centerColor.getGreen(), centerColor.getBlue(), centerColor.getAlpha())
-                .endVertex();
-
-        // Square vertices
-        bufferBuilder.vertex(matrix, -size, -size, 0.0F) // Bottom-left
-                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
-                .endVertex();
-        bufferBuilder.vertex(matrix, size, -size, 0.0F) // Bottom-right
-                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
-                .endVertex();
-        bufferBuilder.vertex(matrix, size, size, 0.0F) // Top-right
-                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
-                .endVertex();
-        bufferBuilder.vertex(matrix, -size, size, 0.0F) // Top-left
-                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
-                .endVertex();
-        bufferBuilder.vertex(matrix, -size, -size, 0.0F) // Close the shape
+        // Render filled diamond
+        buffer.begin(VertexFormat.Mode.TRIANGLE_FAN, DefaultVertexFormat.POSITION_COLOR);
+        buffer.vertex(matrix, (float)pos.x, (float)pos.y, (float)pos.z)
                 .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
                 .endVertex();
 
-        BufferUploader.drawWithShader(bufferBuilder.end());
-
-        // Square outline
-        renderSquareOutline(poseStack, size, LockOnConfig.getOutlineColor());
-    }
-
-    // Outline rendering methods
-    private static void renderCircleOutline(PoseStack poseStack, float size, Color color) {
-        BufferBuilder bufferBuilder = Tesselator.getInstance().getBuilder();
-        Matrix4f matrix = poseStack.last().pose();
-
-        bufferBuilder.begin(VertexFormat.Mode.LINE_STRIP, DefaultVertexFormat.POSITION_COLOR);
-
-        int segments = 36;
-        for (int i = 0; i <= segments; i++) {
-            float angle = (float) (i * 2 * Math.PI / segments);
-            float x = (float) Math.cos(angle) * size;
-            float y = (float) Math.sin(angle) * size;
-
-            bufferBuilder.vertex(matrix, x, y, 0.0F)
+        for (int i = 0; i < vertices.length; i++) {
+            Vec3 vertex = vertices[i];
+            buffer.vertex(matrix, (float)vertex.x, (float)vertex.y, (float)vertex.z)
                     .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
                     .endVertex();
         }
+        // Close the fan
+        buffer.vertex(matrix, (float)vertices[0].x, (float)vertices[0].y, (float)vertices[0].z)
+                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha())
+                .endVertex();
 
-        BufferUploader.drawWithShader(bufferBuilder.end());
+        tesselator.end();
+
+        RenderSystem.enableDepthTest();
+        RenderSystem.disableBlend();
+
+        poseStack.popPose();
     }
 
-    private static void renderDiamondOutline(PoseStack poseStack, float size, Color color) {
-        BufferBuilder bufferBuilder = Tesselator.getInstance().getBuilder();
+    /**
+     * Render square indicator
+     */
+    private static void renderSquareIndicator(PoseStack poseStack, Vec3 pos, float size,
+                                              Color color, Color outline, boolean isThirdPerson) {
+        poseStack.pushPose();
+
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+        RenderSystem.disableDepthTest();
+        RenderSystem.setShader(GameRenderer::getPositionColorShader);
+
+        Tesselator tesselator = Tesselator.getInstance();
+        BufferBuilder buffer = tesselator.getBuilder();
         Matrix4f matrix = poseStack.last().pose();
 
-        bufferBuilder.begin(VertexFormat.Mode.LINE_STRIP, DefaultVertexFormat.POSITION_COLOR);
+        // Square vertices
+        float halfSize = size * 0.7f; // Make it slightly smaller than circle
 
-        bufferBuilder.vertex(matrix, 0.0F, size, 0.0F).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha()).endVertex();
-        bufferBuilder.vertex(matrix, size, 0.0F, 0.0F).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha()).endVertex();
-        bufferBuilder.vertex(matrix, 0.0F, -size, 0.0F).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha()).endVertex();
-        bufferBuilder.vertex(matrix, -size, 0.0F, 0.0F).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha()).endVertex();
-        bufferBuilder.vertex(matrix, 0.0F, size, 0.0F).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha()).endVertex();
+        // Render filled square
+        buffer.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
 
-        BufferUploader.drawWithShader(bufferBuilder.end());
+        buffer.vertex(matrix, (float)(pos.x - halfSize), (float)(pos.y - halfSize), (float)pos.z)
+                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha()).endVertex();
+        buffer.vertex(matrix, (float)(pos.x + halfSize), (float)(pos.y - halfSize), (float)pos.z)
+                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha()).endVertex();
+        buffer.vertex(matrix, (float)(pos.x + halfSize), (float)(pos.y + halfSize), (float)pos.z)
+                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha()).endVertex();
+        buffer.vertex(matrix, (float)(pos.x - halfSize), (float)(pos.y + halfSize), (float)pos.z)
+                .color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha()).endVertex();
+
+        tesselator.end();
+
+        // Render outline
+        if (outline.getAlpha() > 0) {
+            buffer.begin(VertexFormat.Mode.DEBUG_LINE_STRIP, DefaultVertexFormat.POSITION_COLOR);
+
+            buffer.vertex(matrix, (float)(pos.x - halfSize), (float)(pos.y - halfSize), (float)pos.z)
+                    .color(outline.getRed(), outline.getGreen(), outline.getBlue(), outline.getAlpha()).endVertex();
+            buffer.vertex(matrix, (float)(pos.x + halfSize), (float)(pos.y - halfSize), (float)pos.z)
+                    .color(outline.getRed(), outline.getGreen(), outline.getBlue(), outline.getAlpha()).endVertex();
+            buffer.vertex(matrix, (float)(pos.x + halfSize), (float)(pos.y + halfSize), (float)pos.z)
+                    .color(outline.getRed(), outline.getGreen(), outline.getBlue(), outline.getAlpha()).endVertex();
+            buffer.vertex(matrix, (float)(pos.x - halfSize), (float)(pos.y + halfSize), (float)pos.z)
+                    .color(outline.getRed(), outline.getGreen(), outline.getBlue(), outline.getAlpha()).endVertex();
+            buffer.vertex(matrix, (float)(pos.x - halfSize), (float)(pos.y - halfSize), (float)pos.z)
+                    .color(outline.getRed(), outline.getGreen(), outline.getBlue(), outline.getAlpha()).endVertex();
+
+            tesselator.end();
+        }
+
+        RenderSystem.enableDepthTest();
+        RenderSystem.disableBlend();
+
+        poseStack.popPose();
     }
 
-    private static void renderSquareOutline(PoseStack poseStack, float size, Color color) {
-        BufferBuilder bufferBuilder = Tesselator.getInstance().getBuilder();
-        Matrix4f matrix = poseStack.last().pose();
+    /**
+     * Render custom indicator using custom texture
+     */
+    private static void renderCustomIndicator(PoseStack poseStack, Vec3 pos, float size,
+                                              Color color, Color outline, boolean isThirdPerson) {
+        // Try to get custom indicator from CustomIndicatorManager
+        ResourceLocation customTexture = CustomIndicatorManager.getCurrentIndicatorTexture();
 
-        bufferBuilder.begin(VertexFormat.Mode.LINE_STRIP, DefaultVertexFormat.POSITION_COLOR);
+        if (customTexture != null) {
+            renderTexturedIndicator(poseStack, pos, size, color, customTexture, isThirdPerson);
+        } else {
+            // Fallback to circle if no custom texture
+            renderCircleIndicator(poseStack, pos, size, color, outline, isThirdPerson);
+        }
+    }
 
-        bufferBuilder.vertex(matrix, -size, -size, 0.0F).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha()).endVertex();
-        bufferBuilder.vertex(matrix, size, -size, 0.0F).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha()).endVertex();
-        bufferBuilder.vertex(matrix, size, size, 0.0F).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha()).endVertex();
-        bufferBuilder.vertex(matrix, -size, size, 0.0F).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha()).endVertex();
-        bufferBuilder.vertex(matrix, -size, -size, 0.0F).color(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha()).endVertex();
+    /**
+     * Render textured indicator
+     */
+    private static void renderTexturedIndicator(PoseStack poseStack, Vec3 pos, float size,
+                                                Color color, ResourceLocation texture, boolean isThirdPerson) {
+        // Implementation for textured rendering would go here
+        // For now, fallback to circle
+        renderCircleIndicator(poseStack, pos, size, color, Color.WHITE, isThirdPerson);
+    }
 
-        BufferUploader.drawWithShader(bufferBuilder.end());
+    /**
+     * Render target information text
+     */
+    private static void renderTargetInfo(PoseStack poseStack, Entity target, Vec3 pos,
+                                         float size, boolean isThirdPerson) {
+        // Implementation for rendering target name, health, distance info
+        // This would render text above/below the indicator
+    }
+
+    /**
+     * Update animation variables
+     */
+    private static void updateAnimation() {
+        long currentTime = System.currentTimeMillis();
+        animationTime = currentTime;
+        pulsePhase += 0.05f;
+        if (pulsePhase > 2 * Math.PI) {
+            pulsePhase -= 2 * Math.PI;
+        }
     }
 }

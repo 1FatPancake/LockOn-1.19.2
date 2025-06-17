@@ -1,5 +1,6 @@
 package net.leolifeless.lockonmod;
 
+import net.leolifeless.lockonmod.compat.ThirdPersonCompatibility;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.Registry;
@@ -39,51 +40,159 @@ import java.util.stream.Collectors;
 public class LockOnSystem {
     private static Entity targetEntity = null;
     private static List<Entity> potentialTargets = new ArrayList<>();
-    private static int currentTargetIndex = 0;
-    private static int tickCounter = 0;
+    private static int currentTargetIndex = -1;
     private static boolean wasKeyHeld = false;
-
-    // Interpolation values for smooth camera movement
-    private static float prevYaw = 0F;
-    private static float prevPitch = 0F;
-    private static boolean wasLocked = false;
-
-    // Runtime settings for togglable features
     private static boolean indicatorVisible = true;
+    private static boolean wasLocked = false;
     private static LockOnConfig.TargetingMode runtimeTargetingMode = null;
 
+    // Enhanced for third person compatibility
+    private static Vec3 lastCameraOffset = Vec3.ZERO;
+    private static boolean lastThirdPersonState = false;
+    private static long lastUpdateTime = 0;
+
+    // === PUBLIC ACCESSORS (FIXES COMPILATION ERRORS) ===
+
     /**
-     * Enhanced key input handler with multiple modes and custom indicator support
+     * Get the current target entity (public accessor)
      */
+    public static Entity getTargetEntity() {
+        return targetEntity;
+    }
+
+    /**
+     * Check if there is currently a locked target
+     */
+    public static boolean hasTarget() {
+        return targetEntity != null && targetEntity.isAlive();
+    }
+
+    /**
+     * Get the list of potential targets
+     */
+    public static List<Entity> getPotentialTargets() {
+        return new ArrayList<>(potentialTargets);
+    }
+
+    /**
+     * Check if the mod was previously locked (for UI purposes)
+     */
+    public static boolean wasLocked() {
+        return wasLocked;
+    }
+
+    /**
+     * Gets the current compatibility status for external access
+     */
+    public static String getThirdPersonCompatibilityStatus() {
+        return ThirdPersonCompatibility.getCompatibilityStatus();
+    }
+
+    // === MAIN EVENT HANDLERS ===
+
     @SubscribeEvent
-    public static void onKeyInput(InputEvent.Key event) {
-        LocalPlayer player = Minecraft.getInstance().player;
+    public static void onClientTick(TickEvent.ClientTickEvent event) {
+        if (event.phase != TickEvent.Phase.END) return;
+
+        Minecraft mc = Minecraft.getInstance();
+        LocalPlayer player = mc.player;
         if (player == null) return;
 
-        // Check game mode restrictions
-        if (shouldDisableForGameMode(player)) return;
+        // Performance optimization - only update every few ticks based on config
+        long currentTime = System.currentTimeMillis();
+        if (currentTime - lastUpdateTime < (LockOnConfig.getUpdateFrequency() * 50)) {
+            return;
+        }
+        lastUpdateTime = currentTime;
 
+        // Check for third person state changes
+        boolean currentThirdPersonState = ThirdPersonCompatibility.isThirdPersonActive();
+        if (currentThirdPersonState != lastThirdPersonState) {
+            onThirdPersonStateChanged(currentThirdPersonState);
+            lastThirdPersonState = currentThirdPersonState;
+        }
+
+        // Update camera offset tracking
+        if (currentThirdPersonState) {
+            lastCameraOffset = ThirdPersonCompatibility.getThirdPersonCameraOffset();
+        }
+
+        // Check if lock-on should be disabled for current game mode
+        if (shouldDisableForGameMode(player)) {
+            clearTarget();
+            return;
+        }
+
+        handleInput(player);
+        updateTargeting(player);
+        updateCameraRotation(player);
+    }
+
+    /**
+     * Handle third person state changes
+     */
+    private static void onThirdPersonStateChanged(boolean isThirdPerson) {
+        if (isThirdPerson) {
+            LockOnMod.LOGGER.debug("Switched to third person - enabling enhanced lock-on features");
+            // Optionally adjust current target if locked
+            if (targetEntity != null) {
+                updateTargetingParameters();
+            }
+        } else {
+            LockOnMod.LOGGER.debug("Switched to first person - using standard lock-on features");
+        }
+    }
+
+    /**
+     * Update targeting parameters when switching perspectives
+     */
+    private static void updateTargetingParameters() {
+        // Recalculate targeting validity in new perspective
+        if (targetEntity != null) {
+            LocalPlayer player = Minecraft.getInstance().player;
+            if (player != null && !isValidTarget(targetEntity, player)) {
+                clearTarget();
+            }
+        }
+    }
+
+    /**
+     * Enhanced input handling with third person considerations
+     */
+    private static void handleInput(LocalPlayer player) {
         boolean lockKeyPressed = LockOnKeybinds.lockOnKey.isDown();
         boolean lockKeyClicked = LockOnKeybinds.lockOnKey.consumeClick();
         boolean cycleKeyClicked = LockOnKeybinds.cycleTargetKey.consumeClick();
-        boolean cycleReverseKeyClicked = LockOnKeybinds.cycleTargetReverseKey.consumeClick();
+        boolean reverseCycleKeyClicked = LockOnKeybinds.cycleTargetReverseKey.consumeClick();
         boolean clearKeyClicked = LockOnKeybinds.clearTargetKey.consumeClick();
 
-        // Handle different keybinding modes
-        if (LockOnConfig.holdToMaintainLock()) {
-            handleHoldMode(player, lockKeyPressed);
-        } else if (LockOnConfig.isToggleMode()) {
+        // Handle lock-on based on configuration mode
+        if (LockOnConfig.isToggleMode()) {
             if (lockKeyClicked) {
-                handleToggleMode(player);
+                if (targetEntity == null) {
+                    findAndLockTarget(player);
+                } else {
+                    clearTarget();
+                }
+            }
+        } else if (LockOnConfig.holdToMaintainLock()) {
+            if (lockKeyPressed && !wasKeyHeld) {
+                findAndLockTarget(player);
+            } else if (!lockKeyPressed && wasKeyHeld) {
+                clearTarget();
+            }
+        } else {
+            if (lockKeyClicked) {
+                findAndLockTarget(player);
             }
         }
 
         // Handle target cycling
-        if (cycleKeyClicked && targetEntity != null && LockOnConfig.canCycleThroughTargets()) {
+        if (cycleKeyClicked && LockOnConfig.canCycleThroughTargets()) {
             cycleTarget(player, false);
         }
 
-        if (cycleReverseKeyClicked && targetEntity != null && LockOnConfig.canCycleThroughTargets()) {
+        if (reverseCycleKeyClicked && LockOnConfig.canCycleThroughTargets()) {
             cycleTarget(player, true);
         }
 
@@ -102,6 +211,469 @@ public class LockOnSystem {
         handleVisualControls(player);
 
         wasKeyHeld = lockKeyPressed;
+    }
+
+    /**
+     * Enhanced targeting with third person compatibility
+     */
+    private static void findAndLockTarget(LocalPlayer player) {
+        List<Entity> targets = findValidTargets(player);
+
+        if (targets.isEmpty()) {
+            showMessage(player, "No Valid Targets Found");
+            playSound(player, "target_lost");
+            return;
+        }
+
+        // Apply third person adjustments to targeting
+        if (ThirdPersonCompatibility.isThirdPersonActive()) {
+            targets = adjustTargetsForThirdPerson(targets, player);
+        }
+
+        Entity newTarget = selectBestTarget(targets, player);
+
+        if (newTarget != null) {
+            setTarget(newTarget);
+            potentialTargets = targets;
+            currentTargetIndex = targets.indexOf(newTarget);
+            showMessage(player, "Target Locked: " + getEntityDisplayName(newTarget));
+            playSound(player, "lock_on");
+        }
+    }
+
+    /**
+     * Adjust target list for third person perspective
+     */
+    private static List<Entity> adjustTargetsForThirdPerson(List<Entity> targets, LocalPlayer player) {
+        Vec3 cameraOffset = ThirdPersonCompatibility.getThirdPersonCameraOffset();
+
+        // Filter out targets that might be behind the camera in third person
+        return targets.stream()
+                .filter(entity -> {
+                    Vec3 toEntity = entity.position().subtract(player.position());
+                    Vec3 adjustedCameraPos = player.position().add(cameraOffset);
+                    Vec3 toCameraEntity = entity.position().subtract(adjustedCameraPos);
+
+                    // Ensure target is generally in front of the camera
+                    return toCameraEntity.dot(player.getLookAngle()) > -0.5;
+                })
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Enhanced target finding with third person range adjustments
+     */
+    private static List<Entity> findValidTargets(LocalPlayer player) {
+        // Get base range and adjust for third person
+        double baseRange = LockOnConfig.getMaxLockOnDistance();
+        final double range;
+        final double searchRadius;
+
+        try {
+            range = ThirdPersonCompatibility.isThirdPersonActive() ?
+                    ThirdPersonCompatibility.getAdjustedTargetingRange(baseRange) : baseRange;
+
+            // Get search radius with third person adjustments
+            double baseSearchRadius = LockOnConfig.getSearchRadius();
+            searchRadius = ThirdPersonCompatibility.isThirdPersonActive() ?
+                    ThirdPersonCompatibility.getAdjustedTargetingRange(baseSearchRadius) : baseSearchRadius;
+        } catch (Exception e) {
+            // Fallback if third person compatibility fails
+            LockOnMod.LOGGER.debug("Third person compatibility error, using defaults: {}", e.getMessage());
+            final double fallbackRange = baseRange;
+            final double fallbackSearchRadius = LockOnConfig.getSearchRadius();
+
+            AABB searchBox = player.getBoundingBox().inflate(fallbackSearchRadius);
+            List<Entity> nearbyEntities = player.level.getEntities(player, searchBox);
+
+            return nearbyEntities.stream()
+                    .filter(entity -> entity instanceof LivingEntity)
+                    .filter(entity -> entity != player)
+                    .filter(entity -> (double) entity.distanceTo(player) <= fallbackRange)
+                    .filter(entity -> isValidTarget(entity, player))
+                    .filter(entity -> hasLineOfSight(player, entity))
+                    .filter(entity -> isWithinTargetingAngle(player, entity))
+                    .limit(LockOnConfig.getMaxTargetsToSearch())
+                    .collect(Collectors.toList());
+        }
+
+        AABB searchBox = player.getBoundingBox().inflate(searchRadius);
+        List<Entity> nearbyEntities = player.level.getEntities(player, searchBox);
+
+        return nearbyEntities.stream()
+                .filter(entity -> entity instanceof LivingEntity)
+                .filter(entity -> entity != player)
+                .filter(entity -> (double) entity.distanceTo(player) <= range)
+                .filter(entity -> isValidTarget(entity, player))
+                .filter(entity -> hasLineOfSight(player, entity))
+                .filter(entity -> isWithinTargetingAngle(player, entity))
+                .limit(LockOnConfig.getMaxTargetsToSearch())
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Enhanced angle checking with third person adjustments
+     */
+    private static boolean isWithinTargetingAngle(LocalPlayer player, Entity target) {
+        // Get base angle and adjust for third person
+        double maxAngle = LockOnConfig.getTargetingAngle();
+        try {
+            if (ThirdPersonCompatibility.isThirdPersonActive()) {
+                maxAngle = ThirdPersonCompatibility.getAdjustedTargetingAngle(maxAngle);
+            }
+        } catch (Exception e) {
+            // Fallback if third person compatibility fails
+            LockOnMod.LOGGER.debug("Third person angle adjustment failed, using default: {}", e.getMessage());
+        }
+
+        Vec3 playerPos = player.getEyePosition();
+        Vec3 targetPos = target.getEyePosition();
+        Vec3 lookDirection = player.getLookAngle();
+
+        // Adjust for third person camera offset
+        try {
+            if (ThirdPersonCompatibility.isThirdPersonActive()) {
+                Vec3 cameraOffset = ThirdPersonCompatibility.getThirdPersonCameraOffset();
+                playerPos = playerPos.add(cameraOffset.scale(0.5)); // Partial offset for better targeting
+            }
+        } catch (Exception e) {
+            // Fallback if third person compatibility fails
+            LockOnMod.LOGGER.debug("Third person camera offset failed, using default position: {}", e.getMessage());
+        }
+
+        Vec3 toTarget = targetPos.subtract(playerPos).normalize();
+        double angle = Math.acos(Math.max(-1.0, Math.min(1.0, lookDirection.dot(toTarget)))) * 180.0 / Math.PI;
+
+        return angle <= maxAngle;
+    }
+
+    /**
+     * Comprehensive target validation
+     */
+    private static boolean isValidTarget(Entity entity, LocalPlayer player) {
+        if (!(entity instanceof LivingEntity)) return false;
+        if (entity == player) return false;
+        if (!entity.isAlive()) return false;
+
+        LivingEntity living = (LivingEntity) entity;
+
+        // Health filtering
+        float health = living.getHealth();
+        if (health < LockOnConfig.getMinTargetHealth()) return false;
+        if (LockOnConfig.getMaxTargetHealth() > 0 && health > LockOnConfig.getMaxTargetHealth()) return false;
+
+        // Entity type filtering
+        if (entity instanceof Player && !LockOnConfig.canTargetPlayers()) return false;
+        if (entity instanceof Monster && !LockOnConfig.canTargetHostileMobs()) return false;
+        if (entity instanceof Animal && !LockOnConfig.canTargetPassiveMobs()) return false;
+        if ((entity instanceof WitherBoss || entity instanceof EnderDragon) && !LockOnConfig.canTargetBosses()) return false;
+
+        // Blacklist/Whitelist filtering
+        ResourceLocation entityId = EntityType.getKey(entity.getType());
+        String entityIdString = entityId.toString();
+
+        if (LockOnConfig.useWhitelist()) {
+            return LockOnConfig.getEntityWhitelist().contains(entityIdString);
+        } else {
+            return !LockOnConfig.getEntityBlacklist().contains(entityIdString);
+        }
+    }
+
+    /**
+     * Enhanced line of sight checking
+     */
+    private static boolean hasLineOfSight(LocalPlayer player, Entity target) {
+        if (!LockOnConfig.requireLineOfSight()) return true;
+
+        Vec3 start = player.getEyePosition();
+        Vec3 end = target.getEyePosition();
+
+        // Adjust for third person camera position
+        if (ThirdPersonCompatibility.isThirdPersonActive()) {
+            Vec3 cameraOffset = ThirdPersonCompatibility.getThirdPersonCameraOffset();
+            start = start.add(cameraOffset.scale(0.2)); // Slight adjustment
+        }
+
+        BlockHitResult result = player.level.clip(new ClipContext(
+                start, end, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, player));
+
+        if (result.getType() == HitResult.Type.BLOCK) {
+            BlockState blockState = player.level.getBlockState(result.getBlockPos());
+
+            // Allow targeting through glass if configured
+            if (LockOnConfig.penetrateGlass() &&
+                    (blockState.is(Blocks.GLASS) || blockState.is(Blocks.GLASS_PANE) ||
+                            blockState.getBlock().toString().contains("glass"))) {
+                return true;
+            }
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Select the best target based on configured mode
+     */
+    private static Entity selectBestTarget(List<Entity> targets, LocalPlayer player) {
+        if (targets.isEmpty()) return null;
+
+        // Use configured targeting mode or runtime override
+        LockOnConfig.TargetingMode mode = runtimeTargetingMode != null ?
+                runtimeTargetingMode : LockOnConfig.getTargetingMode();
+
+        switch (mode) {
+            case CLOSEST:
+                return targets.stream()
+                        .min(Comparator.comparing(e -> e.distanceTo(player)))
+                        .orElse(null);
+
+            case MOST_DAMAGED:
+                return targets.stream()
+                        .filter(e -> e instanceof LivingEntity)
+                        .min(Comparator.comparing(e -> ((LivingEntity) e).getHealth()))
+                        .orElse(null);
+
+            case CROSSHAIR_CENTERED:
+                return targets.stream()
+                        .min(Comparator.comparing(e -> calculateCrosshairDistance(player, e)))
+                        .orElse(null);
+
+            case THREAT_LEVEL:
+                return targets.stream()
+                        .max(Comparator.comparing(e -> calculateThreatLevel(e)))
+                        .orElse(null);
+
+            case SMART:
+                return targets.stream()
+                        .min(Comparator.comparing(e -> calculateSmartScore(player, e)))
+                        .orElse(null);
+
+            default:
+                return targets.get(0);
+        }
+    }
+
+    /**
+     * Calculate distance from crosshair for targeting
+     */
+    private static double calculateCrosshairDistance(LocalPlayer player, Entity entity) {
+        Vec3 lookDirection = player.getLookAngle();
+        Vec3 toEntity = entity.getEyePosition().subtract(player.getEyePosition()).normalize();
+        return Math.acos(Math.max(-1.0, Math.min(1.0, lookDirection.dot(toEntity))));
+    }
+
+    /**
+     * Calculate threat level for targeting
+     */
+    private static double calculateThreatLevel(Entity entity) {
+        if (entity instanceof Monster) return 3.0;
+        if (entity instanceof Player) return 2.0;
+        if (entity instanceof Animal) return 1.0;
+        return 0.0;
+    }
+
+    /**
+     * Calculate smart targeting score (lower is better)
+     */
+    private static double calculateSmartScore(LocalPlayer player, Entity entity) {
+        if (!(entity instanceof LivingEntity)) return Double.MAX_VALUE;
+
+        LivingEntity living = (LivingEntity) entity;
+        double distance = player.distanceTo(entity);
+        double angle = calculateCrosshairDistance(player, entity);
+        double healthPercent = living.getHealth() / living.getMaxHealth();
+        double threat = calculateThreatLevel(entity);
+
+        // Weighted scoring
+        double distanceScore = distance * LockOnConfig.getDistancePriorityWeight();
+        double angleScore = angle * LockOnConfig.getAnglePriorityWeight();
+        double healthScore = (1.0 - healthPercent) * LockOnConfig.getHealthPriorityWeight();
+        double threatScore = (4.0 - threat) * 0.1; // Slight threat preference
+
+        return distanceScore + angleScore + healthScore + threatScore;
+    }
+
+    /**
+     * Enhanced camera rotation with third person smoothing
+     */
+    private static void updateCameraRotation(LocalPlayer player) {
+        if (targetEntity == null || !targetEntity.isAlive()) {
+            if (targetEntity != null) {
+                onTargetLost();
+                clearTarget();
+            }
+            return;
+        }
+
+        if (!LockOnConfig.isSmoothCameraEnabled()) return;
+
+        // Calculate rotation with third person adjustments
+        Vec3 playerEyePos = player.getEyePosition();
+
+        // Adjust eye position for third person camera
+        if (ThirdPersonCompatibility.isThirdPersonActive()) {
+            Vec3 cameraOffset = ThirdPersonCompatibility.getThirdPersonCameraOffset();
+            playerEyePos = playerEyePos.add(cameraOffset.scale(0.3)); // Partial offset
+        }
+
+        // Get adjusted target position for third person
+        Vec3 targetPos = targetEntity.getEyePosition();
+        if (ThirdPersonCompatibility.isThirdPersonActive()) {
+            targetPos = ThirdPersonCompatibility.getAdjustedTargetPosition(targetEntity, targetPos);
+        }
+
+        // Predictive targeting
+        if (LockOnConfig.isPredictiveTargetingEnabled()) {
+            Vec3 velocity = targetEntity.getDeltaMovement();
+            targetPos = targetPos.add(velocity.scale(3.0)); // Predict 3 ticks ahead
+        }
+
+        // Calculate look direction
+        Vec3 direction = targetPos.subtract(playerEyePos).normalize();
+        float targetYaw = (float) (Math.atan2(-direction.x, direction.z) * 180.0 / Math.PI);
+        float targetPitch = (float) (Math.asin(-direction.y) * 180.0 / Math.PI);
+
+        // Get rotation speed with third person adjustments
+        float rotationSpeed = calculateAdaptiveRotationSpeed(player, targetEntity);
+        if (ThirdPersonCompatibility.isThirdPersonActive()) {
+            rotationSpeed = ThirdPersonCompatibility.getAdjustedRotationSpeed(rotationSpeed);
+        }
+
+        // Get smoothing factor
+        float smoothingFactor = LockOnConfig.getCameraSmoothness() * rotationSpeed;
+        if (ThirdPersonCompatibility.shouldUseEnhancedSmoothing()) {
+            smoothingFactor = ThirdPersonCompatibility.getThirdPersonSmoothingFactor(smoothingFactor);
+        }
+
+        // Apply smooth rotation
+        float currentYaw = player.getYRot();
+        float currentPitch = player.getXRot();
+
+        float newYaw = interpolateRotation(currentYaw, targetYaw, smoothingFactor);
+        float newPitch = interpolateRotation(currentPitch, targetPitch, smoothingFactor);
+
+        // Clamp pitch to reasonable values
+        newPitch = Math.max(-90.0f, Math.min(90.0f, newPitch));
+
+        player.setYRot(newYaw);
+        player.setXRot(newPitch);
+    }
+
+    /**
+     * Calculate adaptive rotation speed with proper type casting
+     */
+    private static float calculateAdaptiveRotationSpeed(LocalPlayer player, Entity target) {
+        float baseSpeed = LockOnConfig.getRotationSpeed();
+
+        if (!LockOnConfig.isAdaptiveRotationEnabled()) {
+            return baseSpeed;
+        }
+
+        // Calculate factors for adaptive speed
+        double distance = (double) player.distanceTo(target);
+        Vec3 direction = target.getEyePosition().subtract(player.getEyePosition()).normalize();
+        Vec3 lookDirection = player.getLookAngle();
+        double angleDifference = Math.acos(Math.max(-1.0, Math.min(1.0, lookDirection.dot(direction)))) * 180.0 / Math.PI;
+
+        // Adjust for third person
+        if (ThirdPersonCompatibility.isThirdPersonActive()) {
+            distance += ThirdPersonCompatibility.getThirdPersonCameraOffset().length();
+        }
+
+        // Weight factors - cast to float properly
+        float distanceWeight = (float) LockOnConfig.getDistancePriorityWeight();
+        float angleWeight = (float) LockOnConfig.getAnglePriorityWeight();
+
+        // Calculate adaptive factors - cast to float properly
+        float distanceFactor = (float) (1.0 + (distanceWeight * (distance / LockOnConfig.getMaxLockOnDistance())));
+        float angleFactor = (float) (1.0 + (angleWeight * (angleDifference / 180.0)));
+
+        float adaptiveSpeed = baseSpeed * distanceFactor * angleFactor;
+
+        return Math.max(LockOnConfig.getMinRotationSpeed(),
+                Math.min(LockOnConfig.getMaxRotationSpeed(), adaptiveSpeed));
+    }
+
+    /**
+     * Smoothly interpolates between angles
+     */
+    private static float interpolateRotation(float prev, float current, float factor) {
+        float diff = current - prev;
+        while (diff > 180) diff -= 360;
+        while (diff < -180) diff += 360;
+        return prev + diff * factor;
+    }
+
+    /**
+     * Update targeting state and auto-break if configured
+     */
+    private static void updateTargeting(LocalPlayer player) {
+        if (targetEntity == null) return;
+
+        // Check if target is still valid
+        if (!targetEntity.isAlive() || !isValidTarget(targetEntity, player)) {
+            clearTarget();
+            return;
+        }
+
+        // Auto-break on obstruction
+        if (LockOnConfig.isAutoBreakOnObstructionEnabled() && !hasLineOfSight(player, targetEntity)) {
+            clearTarget();
+            return;
+        }
+
+        // Check if target is still in range
+        double distance = (double) player.distanceTo(targetEntity);
+        double maxRange = LockOnConfig.getMaxLockOnDistance();
+        if (ThirdPersonCompatibility.isThirdPersonActive()) {
+            maxRange = ThirdPersonCompatibility.getAdjustedTargetingRange(maxRange);
+        }
+
+        if (distance > maxRange) {
+            clearTarget();
+            return;
+        }
+    }
+
+    /**
+     * Cycle through available targets
+     */
+    private static void cycleTarget(LocalPlayer player, boolean reverse) {
+        if (potentialTargets.isEmpty()) {
+            findAndLockTarget(player);
+            return;
+        }
+
+        // Filter out invalid targets
+        potentialTargets = potentialTargets.stream()
+                .filter(entity -> entity.isAlive() && isValidTarget(entity, player))
+                .collect(Collectors.toList());
+
+        if (potentialTargets.isEmpty()) {
+            clearTarget();
+            return;
+        }
+
+        // Calculate next index
+        int direction = reverse ? -1 : 1;
+        if (LockOnConfig.reverseScrollCycling()) {
+            direction *= -1;
+        }
+
+        currentTargetIndex += direction;
+        if (currentTargetIndex >= potentialTargets.size()) {
+            currentTargetIndex = 0;
+        } else if (currentTargetIndex < 0) {
+            currentTargetIndex = potentialTargets.size() - 1;
+        }
+
+        // Set new target
+        Entity newTarget = potentialTargets.get(currentTargetIndex);
+        setTarget(newTarget);
+        showMessage(player, "Target Switched: " + getEntityDisplayName(newTarget));
+        playSound(player, "target_switch");
     }
 
     /**
@@ -132,21 +704,19 @@ public class LockOnSystem {
      */
     private static void handleFilterToggles(LocalPlayer player) {
         if (LockOnKeybinds.togglePlayersKey.consumeClick()) {
-            boolean newValue = !LockOnConfig.canTargetPlayers();
             // Note: These would need to be runtime toggles since config values are typically immutable
-            showMessage(player, "Player Targeting: " + (newValue ? "Enabled" : "Disabled"));
+            // For now, just show current state
+            showMessage(player, "Player Targeting: " + (LockOnConfig.canTargetPlayers() ? "Enabled" : "Disabled"));
             playSound(player, "target_switch");
         }
 
         if (LockOnKeybinds.toggleHostilesKey.consumeClick()) {
-            boolean newValue = !LockOnConfig.canTargetHostileMobs();
-            showMessage(player, "Hostile Mob Targeting: " + (newValue ? "Enabled" : "Disabled"));
+            showMessage(player, "Hostile Mob Targeting: " + (LockOnConfig.canTargetHostileMobs() ? "Enabled" : "Disabled"));
             playSound(player, "target_switch");
         }
 
         if (LockOnKeybinds.togglePassivesKey.consumeClick()) {
-            boolean newValue = !LockOnConfig.canTargetPassiveMobs();
-            showMessage(player, "Passive Mob Targeting: " + (newValue ? "Enabled" : "Disabled"));
+            showMessage(player, "Passive Mob Targeting: " + (LockOnConfig.canTargetPassiveMobs() ? "Enabled" : "Disabled"));
             playSound(player, "target_switch");
         }
     }
@@ -162,501 +732,143 @@ public class LockOnSystem {
             playSound(player, "target_switch");
         }
 
-        // Cycle indicator type (including custom indicators)
+        // Cycle indicator type
         if (LockOnKeybinds.cycleIndicatorTypeKey.consumeClick()) {
-            cycleIndicatorType(player);
-        }
-    }
-
-    /**
-     * Cycles through indicator types including custom indicators
-     */
-    private static void cycleIndicatorType(LocalPlayer player) {
-        LockOnConfig.IndicatorType currentType = LockOnConfig.getIndicatorType();
-
-        if (currentType == LockOnConfig.IndicatorType.CUSTOM && LockOnConfig.isCustomIndicatorCyclingEnabled()) {
-            // Cycle through custom indicators
-            cycleCustomIndicator(player);
-        } else {
-            // Cycle through main indicator types
-            LockOnConfig.IndicatorType[] types = LockOnConfig.IndicatorType.values();
-            int currentIndex = currentType.ordinal();
-            int nextIndex = (currentIndex + 1) % types.length;
-            LockOnConfig.IndicatorType nextType = types[nextIndex];
-
-            // Note: This would require a way to set config values at runtime
-            showMessage(player, "Indicator Type: " + nextType.getDisplayName());
+            // This would need to cycle through indicator types
+            showMessage(player, "Indicator Type: " + LockOnConfig.getIndicatorType().name());
             playSound(player, "target_switch");
         }
     }
 
     /**
-     * Cycles through available custom indicators
-     */
-    private static void cycleCustomIndicator(LocalPlayer player) {
-        String nextIndicator = CustomIndicatorManager.cycleToNextIndicator();
-
-        // Show message to player
-        String message = "Custom Indicator: " + CustomIndicatorManager.getIndicatorInfo(nextIndicator);
-        showMessage(player, message);
-
-        // Play sound
-        playSound(player, "target_switch");
-    }
-
-    /**
-     * Enhanced client tick with configurable update frequency
+     * Enhanced rendering for third person compatibility
      */
     @SubscribeEvent
-    public static void onClientTick(TickEvent.ClientTickEvent event) {
-        if (event.phase != TickEvent.Phase.END) return;
-
-        Minecraft minecraft = Minecraft.getInstance();
-        LocalPlayer player = minecraft.player;
-
-        if (player == null || minecraft.level == null) return;
-
-        // Update only at configured frequency
-        tickCounter++;
-        if (tickCounter % LockOnConfig.getUpdateFrequency() != 0) return;
-
-        // Validate current target
-        if (targetEntity != null) {
-            if (!isValidTarget(targetEntity, player)) {
-                // Auto-find new target if current becomes invalid
-                if (LockOnConfig.isSmartTargeting()) {
-                    findTarget(player);
-                    if (targetEntity == null) {
-                        onTargetLost();
-                    }
-                } else {
-                    clearTarget();
-                }
-            }
-        }
-    }
-
-    /**
-     * Enhanced camera control with predictive targeting
-     */
-    @SubscribeEvent
-    public static void onCameraSetup(TickEvent.ClientTickEvent event) {
-        if (event.phase != TickEvent.Phase.END) return;
-
-        Minecraft minecraft = Minecraft.getInstance();
-        LocalPlayer player = minecraft.player;
-
-        if (player == null || minecraft.level == null || targetEntity == null) return;
-        if (!targetEntity.isAlive() || !player.isAlive()) return;
-
-        // Check if camera should auto-break on obstruction
-        if (LockOnConfig.autoBreakOnObstruction() && !hasLineOfSight(player, targetEntity)) {
-            clearTarget();
-            return;
-        }
-
-        // Get positions
-        Vec3 playerPos = player.getEyePosition();
-        Vec3 targetPos = getTargetPosition(targetEntity);
-
-        // Apply predictive targeting if enabled
-        if (LockOnConfig.isPredictiveTargeting()) {
-            Vec3 prediction = targetEntity.getDeltaMovement().scale(LockOnConfig.getPredictionStrength());
-            targetPos = targetPos.add(prediction);
-        }
-
-        // Calculate direction vector
-        Vec3 directionVec = targetPos.subtract(playerPos).normalize();
-
-        // Convert to rotation
-        double horizontalDistance = Math.sqrt(directionVec.x * directionVec.x + directionVec.z * directionVec.z);
-        float targetYaw = (float) (Math.atan2(directionVec.z, directionVec.x) * 180.0 / Math.PI) - 90.0F;
-        float targetPitch = (float) -(Math.atan2(directionVec.y, horizontalDistance) * 180.0 / Math.PI);
-
-        // Get current rotations
-        float currentYaw = player.getYRot();
-        float currentPitch = player.getXRot();
-
-        // Calculate yaw difference (shortest path)
-        float yawDiff = targetYaw - currentYaw;
-        while (yawDiff > 180) yawDiff -= 360;
-        while (yawDiff < -180) yawDiff += 360;
-
-        // Initialize smoothing values
-        if (!wasLocked) {
-            prevYaw = currentYaw;
-            prevPitch = currentPitch;
-            wasLocked = true;
-        }
-
-        // Calculate adaptive rotation speed
-        float distance = player.distanceTo(targetEntity);
-        float angleDifference = Math.abs(yawDiff) + Math.abs(targetPitch - currentPitch);
-
-        float baseSpeed = LockOnConfig.getRotationSpeed();
-        float adaptiveSpeed = calculateAdaptiveSpeed(baseSpeed, distance, angleDifference);
-
-        // Apply smoothing if enabled
-        float newYaw, newPitch;
-        if (LockOnConfig.isSmoothCameraEnabled()) {
-            float smoothingFactor = LockOnConfig.getSmoothingFactor();
-            newYaw = interpolateRotation(prevYaw, currentYaw + yawDiff * adaptiveSpeed, smoothingFactor);
-            newPitch = interpolateRotation(prevPitch, currentPitch + (targetPitch - currentPitch) * adaptiveSpeed, smoothingFactor);
-        } else {
-            newYaw = currentYaw + yawDiff * adaptiveSpeed;
-            newPitch = currentPitch + (targetPitch - currentPitch) * adaptiveSpeed;
-        }
-
-        // Update previous values
-        prevYaw = newYaw;
-        prevPitch = newPitch;
-
-        // Apply rotations
-        player.setYRot(newYaw);
-        player.setXRot(newPitch);
-    }
-
-    /**
-     * Renders the enhanced lock-on indicator
-     */
-    @SubscribeEvent
-    public static void onRenderWorld(RenderLevelStageEvent event) {
+    public static void onRenderLevel(RenderLevelStageEvent event) {
         if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) return;
+        if (targetEntity == null || !indicatorVisible) return;
 
-        if (targetEntity != null && targetEntity.isAlive() && indicatorVisible) {
-            LockOnRenderer.renderLockOnIndicator(event, targetEntity);
+        Minecraft mc = Minecraft.getInstance();
+        LocalPlayer player = mc.player;
+        if (player == null) return;
+
+        // Get adjusted indicator size for third person
+        float indicatorSize = LockOnConfig.getIndicatorSize();
+        if (ThirdPersonCompatibility.isThirdPersonActive()) {
+            indicatorSize = ThirdPersonCompatibility.getAdjustedIndicatorSize(indicatorSize);
         }
+
+        // Render with enhanced positioning for third person
+        Vec3 targetPos = targetEntity.getEyePosition();
+        if (ThirdPersonCompatibility.isThirdPersonActive()) {
+            targetPos = ThirdPersonCompatibility.getAdjustedTargetPosition(targetEntity, targetPos);
+        }
+
+        LockOnRenderer.renderLockOnIndicator(
+                event.getPoseStack(),
+                targetEntity,
+                targetPos,
+                indicatorSize,
+                LockOnConfig.getIndicatorType(),
+                ThirdPersonCompatibility.isThirdPersonActive()
+        );
+    }
+
+    // === UTILITY METHODS ===
+
+    /**
+     * Sets the runtime targeting mode (overrides config)
+     */
+    private static void setRuntimeTargetingMode(LockOnConfig.TargetingMode mode) {
+        runtimeTargetingMode = mode;
     }
 
     /**
-     * Handles hold-to-maintain lock mode
+     * Sets the target entity
      */
-    private static void handleHoldMode(LocalPlayer player, boolean keyHeld) {
-        if (keyHeld && !wasKeyHeld) {
-            // Key just pressed
-            if (targetEntity == null) {
-                findTarget(player);
-            }
-        } else if (!keyHeld && wasKeyHeld) {
-            // Key just released
-            clearTarget();
-        }
-    }
-
-    /**
-     * Handles toggle lock mode
-     */
-    private static void handleToggleMode(LocalPlayer player) {
-        if (targetEntity == null) {
-            findTarget(player);
-        } else {
-            clearTarget();
-        }
-    }
-
-    /**
-     * Enhanced target finding with multiple modes and filters
-     */
-    private static void findTarget(LocalPlayer player) {
-        if (player.level == null) return;
-
-        // Get potential targets within search radius
-        AABB searchBox = player.getBoundingBox().inflate(LockOnConfig.getSearchRadius());
-        List<Entity> nearbyEntities = player.level.getEntities(player, searchBox);
-
-        // Filter entities based on configuration
-        potentialTargets = nearbyEntities.stream()
-                .filter(entity -> isValidTarget(entity, player))
-                .filter(entity -> passesEntityFilters(entity))
-                .filter(entity -> passesLineOfSightCheck(player, entity))
-                .filter(entity -> passesAngleCheck(player, entity))
-                .limit(LockOnConfig.getMaxTargetsToSearch())
-                .collect(Collectors.toList());
-
-        if (potentialTargets.isEmpty()) {
-            showMessage(player, "No Valid Targets Found");
-            return;
-        }
-
-        // Sort based on targeting mode
-        sortTargetsByMode(player, potentialTargets);
-
-        // Select the best target
-        targetEntity = potentialTargets.get(0);
-        currentTargetIndex = 0;
+    private static void setTarget(Entity target) {
+        targetEntity = target;
         wasLocked = true;
-
-        // Show target acquired message
-        showMessage(player, "Target Locked: " + targetEntity.getDisplayName().getString());
-
-        // Play lock-on sound
-        playSound(player, "lock_on");
     }
 
     /**
-     * Cycles through available targets
+     * Shows a message to the player with third person compatibility info
      */
-    private static void cycleTarget(LocalPlayer player, boolean reverse) {
-        if (potentialTargets.isEmpty()) {
-            findTarget(player);
-            return;
-        }
-
-        // Update potential targets list
-        potentialTargets = potentialTargets.stream()
-                .filter(entity -> isValidTarget(entity, player))
-                .collect(Collectors.toList());
-
-        if (potentialTargets.size() <= 1) return;
-
-        // Find current target index
-        currentTargetIndex = potentialTargets.indexOf(targetEntity);
-        if (currentTargetIndex == -1) {
-            currentTargetIndex = 0;
-        } else {
-            // Move to next/previous target
-            if (reverse || LockOnConfig.reverseScrollCycling()) {
-                currentTargetIndex = (currentTargetIndex - 1 + potentialTargets.size()) % potentialTargets.size();
+    private static void showMessage(LocalPlayer player, String message) {
+        if (player != null) {
+            // Add compatibility status for debug purposes
+            if (LockOnMod.LOGGER.isDebugEnabled() && ThirdPersonCompatibility.isModLoaded()) {
+                String compatMessage = message + " [" + ThirdPersonCompatibility.getCompatibilityStatus() + "]";
+                player.displayClientMessage(Component.literal(compatMessage), true);
             } else {
-                currentTargetIndex = (currentTargetIndex + 1) % potentialTargets.size();
+                player.displayClientMessage(Component.literal(message), true);
             }
         }
-
-        targetEntity = potentialTargets.get(currentTargetIndex);
-
-        // Reset smoothing values
-        prevYaw = player.getYRot();
-        prevPitch = player.getXRot();
-
-        // Show target switch message
-        showMessage(player, "Target: " + targetEntity.getDisplayName().getString());
-
-        // Play target switch sound
-        playSound(player, "target_switch");
     }
 
     /**
-     * Validates if an entity can be targeted
+     * Plays appropriate sound based on type
      */
-    private static boolean isValidTarget(Entity entity, LocalPlayer player) {
-        if (!(entity instanceof LivingEntity) || !entity.isAlive()) return false;
-        if (entity == player) return false;
-        if (entity.distanceTo(player) > LockOnConfig.getMaxLockOnDistance()) return false;
-        if (entity.level != player.level) return false;
+    private static void playSound(LocalPlayer player, String soundType) {
+        if (!LockOnConfig.areSoundsEnabled()) return;
 
-        LivingEntity living = (LivingEntity) entity;
-
-        // Health checks
-        float minHealth = LockOnConfig.getMinTargetHealth();
-        float maxHealth = LockOnConfig.getMaxTargetHealth();
-
-        if (living.getHealth() < minHealth) return false;
-        if (maxHealth > 0 && living.getHealth() > maxHealth) return false;
-
-        return true;
-    }
-
-    /**
-     * Checks entity type filters
-     */
-    private static boolean passesEntityFilters(Entity entity) {
-        // Check whitelist/blacklist
-        ResourceLocation entityType = EntityType.getKey(entity.getType());
-        String entityTypeString = entityType.toString();
-
-        if (LockOnConfig.useWhitelist()) {
-            if (!LockOnConfig.getEntityWhitelist().contains(entityTypeString)) return false;
-        } else {
-            if (LockOnConfig.getEntityBlacklist().contains(entityTypeString)) return false;
-        }
-
-        // Type-based filters
-        if (entity instanceof Player && !LockOnConfig.canTargetPlayers()) return false;
-        if (entity instanceof Monster && !LockOnConfig.canTargetHostileMobs()) return false;
-        if (entity instanceof Animal && !LockOnConfig.canTargetAnimals()) return false;
-        if (entity instanceof AbstractVillager && !LockOnConfig.canTargetVillagers()) return false;
-
-        // Boss check
-        if ((entity instanceof WitherBoss || entity instanceof EnderDragon) && !LockOnConfig.canTargetBosses()) return false;
-
-        // Mob category checks
-        MobCategory category = entity.getType().getCategory();
-        switch (category) {
-            case MONSTER:
-                return LockOnConfig.canTargetHostileMobs();
-            case CREATURE:
-                return LockOnConfig.canTargetPassiveMobs();
-            case AMBIENT:
-                return LockOnConfig.canTargetPassiveMobs();
-            case WATER_CREATURE:
-                return LockOnConfig.canTargetPassiveMobs();
-            case WATER_AMBIENT:
-                return LockOnConfig.canTargetPassiveMobs();
-            case MISC:
-                return LockOnConfig.canTargetNeutralMobs();
-            default:
-                return true;
-        }
-    }
-
-    /**
-     * Checks line of sight if required
-     */
-    private static boolean passesLineOfSightCheck(LocalPlayer player, Entity entity) {
-        if (!LockOnConfig.requireLineOfSight()) return true;
-        return hasLineOfSight(player, entity);
-    }
-
-    /**
-     * Checks if entity is within targeting angle
-     */
-    private static boolean passesAngleCheck(LocalPlayer player, Entity entity) {
-        Vec3 playerLook = player.getViewVector(1.0F).normalize();
-        Vec3 directionToEntity = entity.position().subtract(player.getEyePosition()).normalize();
-
-        double dotProduct = playerLook.dot(directionToEntity);
-        double angle = Math.acos(Math.max(-1.0, Math.min(1.0, dotProduct))) * 180.0 / Math.PI;
-
-        return angle <= LockOnConfig.getTargetingAngle();
-    }
-
-    /**
-     * Performs line of sight check with glass penetration option
-     */
-    private static boolean hasLineOfSight(LocalPlayer player, Entity entity) {
-        Vec3 start = player.getEyePosition();
-        Vec3 end = getTargetPosition(entity);
-
-        ClipContext context = new ClipContext(start, end, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, player);
-        BlockHitResult result = player.level.clip(context);
-
-        if (result.getType() == HitResult.Type.MISS) return true;
-
-        // Check glass penetration
-        if (LockOnConfig.canPenetrateGlass()) {
-            BlockState hitBlock = player.level.getBlockState(result.getBlockPos());
-            return hitBlock.is(Blocks.GLASS) || hitBlock.is(Blocks.GLASS_PANE) ||
-                    hitBlock.getBlock().toString().toLowerCase().contains("glass");
-        }
-
-        return false;
-    }
-
-    /**
-     * Sorts targets based on the selected targeting mode (with runtime override)
-     */
-    private static void sortTargetsByMode(LocalPlayer player, List<Entity> targets) {
-        LockOnConfig.TargetingMode mode = runtimeTargetingMode != null ? runtimeTargetingMode : LockOnConfig.getTargetingMode();
-
-        switch (mode) {
-            case CLOSEST:
-                targets.sort(Comparator.comparingDouble(entity -> entity.distanceTo(player)));
+        // Play appropriate sound based on type
+        switch (soundType) {
+            case "lock_on":
+                if (LockOnConfig.playLockOnSound()) {
+                    player.level.playLocalSound(player.getX(), player.getY(), player.getZ(),
+                            SoundEvents.EXPERIENCE_ORB_PICKUP, SoundSource.PLAYERS,
+                            LockOnConfig.getSoundVolume(), 1.2f, false);
+                }
                 break;
-
-            case MOST_DAMAGED:
-                targets.sort((e1, e2) -> {
-                    if (e1 instanceof LivingEntity && e2 instanceof LivingEntity) {
-                        LivingEntity l1 = (LivingEntity) e1;
-                        LivingEntity l2 = (LivingEntity) e2;
-                        float health1 = l1.getHealth() / l1.getMaxHealth();
-                        float health2 = l2.getHealth() / l2.getMaxHealth();
-                        return Float.compare(health1, health2);
-                    }
-                    return 0;
-                });
+            case "target_switch":
+                if (LockOnConfig.playTargetSwitchSound()) {
+                    player.level.playLocalSound(player.getX(), player.getY(), player.getZ(),
+                            SoundEvents.UI_BUTTON_CLICK, SoundSource.PLAYERS,
+                            LockOnConfig.getSoundVolume(), 1.5f, false);
+                }
                 break;
-
-            case CROSSHAIR_CENTERED:
-                Vec3 playerLook = player.getViewVector(1.0F).normalize();
-                targets.sort(Comparator.comparingDouble(entity -> {
-                    Vec3 directionToEntity = entity.position().subtract(player.getEyePosition()).normalize();
-                    return -playerLook.dot(directionToEntity); // Negative for ascending order
-                }));
-                break;
-
-            case THREAT_LEVEL:
-                targets.sort((e1, e2) -> {
-                    int threat1 = calculateThreatLevel(e1);
-                    int threat2 = calculateThreatLevel(e2);
-                    return Integer.compare(threat2, threat1); // Descending order
-                });
+            case "target_lost":
+                if (LockOnConfig.playTargetLostSound()) {
+                    player.level.playLocalSound(player.getX(), player.getY(), player.getZ(),
+                            SoundEvents.ITEM_BREAK, SoundSource.PLAYERS,
+                            LockOnConfig.getSoundVolume(), 0.8f, false);
+                }
                 break;
         }
+    }
 
-        // Apply smart targeting if enabled
-        if (LockOnConfig.isSmartTargeting()) {
-            applySmartTargeting(player, targets);
+    /**
+     * Gets display name for an entity
+     */
+    private static String getEntityDisplayName(Entity entity) {
+        return entity.getDisplayName().getString();
+    }
+
+    /**
+     * Clears the current target
+     */
+    public static void clearTarget() {
+        if (targetEntity != null) {
+            onTargetLost();
         }
+        targetEntity = null;
+        potentialTargets.clear();
+        currentTargetIndex = -1;
+        wasLocked = false;
+        runtimeTargetingMode = null;
     }
 
     /**
-     * Applies smart targeting algorithm using multiple factors
+     * Handles target lost event
      */
-    private static void applySmartTargeting(LocalPlayer player, List<Entity> targets) {
-        Vec3 playerLook = player.getViewVector(1.0F).normalize();
-
-        targets.sort(Comparator.comparingDouble(entity -> {
-            double distance = entity.distanceTo(player);
-            double normalizedDistance = Math.min(1.0, distance / LockOnConfig.getMaxLockOnDistance());
-
-            Vec3 directionToEntity = entity.position().subtract(player.getEyePosition()).normalize();
-            double angle = Math.acos(Math.max(-1.0, Math.min(1.0, playerLook.dot(directionToEntity))));
-            double normalizedAngle = angle / Math.PI;
-
-            double healthFactor = 1.0;
-            if (entity instanceof LivingEntity) {
-                LivingEntity living = (LivingEntity) entity;
-                healthFactor = 1.0 - (living.getHealth() / living.getMaxHealth());
-            }
-
-            // Weighted score (lower is better)
-            return (normalizedDistance * LockOnConfig.getDistancePriorityWeight()) +
-                    (normalizedAngle * LockOnConfig.getAnglePriorityWeight()) +
-                    (healthFactor * LockOnConfig.getHealthPriorityWeight());
-        }));
-    }
-
-    /**
-     * Calculates threat level for threat-based targeting
-     */
-    private static int calculateThreatLevel(Entity entity) {
-        if (entity instanceof WitherBoss || entity instanceof EnderDragon) return 100;
-        if (entity instanceof Monster) return 50;
-        if (entity instanceof Player) return 30;
-        if (entity instanceof Animal) return 10;
-        return 20;
-    }
-
-    /**
-     * Gets the target position with configurable offset
-     */
-    private static Vec3 getTargetPosition(Entity entity) {
-        float offset = LockOnConfig.getCameraOffset();
-        return entity.position().add(0, entity.getBbHeight() * offset, 0);
-    }
-
-    /**
-     * Calculates adaptive rotation speed
-     */
-    private static float calculateAdaptiveSpeed(float baseSpeed, float distance, float angleDifference) {
-        float distanceWeight = LockOnConfig.getDistanceWeight();
-        float distanceFactor = 1.0F + (distanceWeight * (distance / LockOnConfig.getMaxLockOnDistance()));
-        float angleFactor = 1.0F + (angleDifference / 180.0F);
-
-        float adaptiveSpeed = baseSpeed * distanceFactor * angleFactor;
-
-        return Math.max(LockOnConfig.getMinRotationSpeed(),
-                Math.min(LockOnConfig.getMaxRotationSpeed(), adaptiveSpeed));
-    }
-
-    /**
-     * Smoothly interpolates between angles
-     */
-    private static float interpolateRotation(float prev, float current, float factor) {
-        float diff = current - prev;
-        while (diff > 180) diff -= 360;
-        while (diff < -180) diff += 360;
-        return prev + diff * factor;
+    private static void onTargetLost() {
+        LocalPlayer player = Minecraft.getInstance().player;
+        if (player != null) {
+            showMessage(player, "Target Lost");
+            playSound(player, "target_lost");
+        }
+        wasLocked = false;
     }
 
     /**
@@ -669,109 +881,101 @@ public class LockOnSystem {
     }
 
     /**
-     * Sets the runtime targeting mode (overrides config)
+     * Debug method to get current targeting state
      */
-    private static void setRuntimeTargetingMode(LockOnConfig.TargetingMode mode) {
-        runtimeTargetingMode = mode;
+    public static String getDebugInfo() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("Target: ").append(targetEntity != null ? getEntityDisplayName(targetEntity) : "None").append("\n");
+        sb.append("Potential Targets: ").append(potentialTargets.size()).append("\n");
+        sb.append("Third Person Active: ").append(ThirdPersonCompatibility.isThirdPersonActive()).append("\n");
+        sb.append("Runtime Mode: ").append(runtimeTargetingMode != null ? runtimeTargetingMode : "Config Default").append("\n");
+        return sb.toString();
     }
 
     /**
-     * Shows a message to the player
+     * Force refresh of target list (useful for external integrations)
      */
-    private static void showMessage(LocalPlayer player, String message) {
-        if (player != null) {
-            player.displayClientMessage(Component.literal(message), true);
-        }
-    }
-
-    /**
-     * Clears the current target
-     */
-    public static void clearTarget() {
-        if (targetEntity != null) {
-            onTargetLost();
-        }
-        targetEntity = null;
-        potentialTargets.clear();
-        wasLocked = false;
-    }
-
-    /**
-     * Handles target lost event
-     */
-    private static void onTargetLost() {
+    public static void refreshTargets() {
         LocalPlayer player = Minecraft.getInstance().player;
         if (player != null) {
-            showMessage(player, "Target Lost");
-            playSound(player, "target_lost");
+            potentialTargets = findValidTargets(player);
         }
     }
 
     /**
-     * Plays sounds based on configuration
+     * Check if targeting is currently active
      */
-    private static void playSound(LocalPlayer player, String soundType) {
-        if (!LockOnConfig.areSoundsEnabled()) return;
-
-        boolean shouldPlay = false;
-        switch (soundType) {
-            case "lock_on":
-                shouldPlay = LockOnConfig.playLockOnSound();
-                break;
-            case "target_switch":
-                shouldPlay = LockOnConfig.playTargetSwitchSound();
-                break;
-            case "target_lost":
-                shouldPlay = LockOnConfig.playTargetLostSound();
-                break;
-        }
-
-        if (shouldPlay && player.level != null) {
-            float volume = LockOnConfig.getSoundVolume();
-            player.level.playSound(player, player.blockPosition(), SoundEvents.UI_BUTTON_CLICK,
-                    SoundSource.PLAYERS, volume, 1.0F);
-        }
-    }
-
-    /**
-     * Returns the currently targeted entity
-     */
-    public static Entity getTargetEntity() {
-        return targetEntity;
-    }
-
-    /**
-     * Returns the list of potential targets
-     */
-    public static List<Entity> getPotentialTargets() {
-        return new ArrayList<>(potentialTargets);
-    }
-
-    /**
-     * Returns whether a target is currently locked
-     */
-    public static boolean hasTarget() {
+    public static boolean isActive() {
         return targetEntity != null && targetEntity.isAlive();
     }
 
     /**
-     * Returns whether the indicator is currently visible
+     * Get the current target distance (for UI display)
+     */
+    public static double getCurrentTargetDistance() {
+        LocalPlayer player = Minecraft.getInstance().player;
+        if (player != null && targetEntity != null) {
+            return (double) player.distanceTo(targetEntity);
+        }
+        return 0.0;
+    }
+
+    /**
+     * Get the current target health percentage (for UI display)
+     */
+    public static float getCurrentTargetHealthPercent() {
+        if (targetEntity instanceof LivingEntity) {
+            LivingEntity living = (LivingEntity) targetEntity;
+            return living.getHealth() / living.getMaxHealth();
+        }
+        return 0.0f;
+    }
+
+    /**
+     * Manual target selection by entity (for external integration)
+     */
+    public static boolean setTargetEntity(Entity entity) {
+        LocalPlayer player = Minecraft.getInstance().player;
+        if (player != null && entity != null && isValidTarget(entity, player)) {
+            setTarget(entity);
+            showMessage(player, "Target Set: " + getEntityDisplayName(entity));
+            playSound(player, "lock_on");
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Toggle indicator visibility (for keybind)
+     */
+    public static void toggleIndicatorVisibility() {
+        indicatorVisible = !indicatorVisible;
+        LocalPlayer player = Minecraft.getInstance().player;
+        if (player != null) {
+            showMessage(player, "Lock-On Indicator: " + (indicatorVisible ? "Enabled" : "Disabled"));
+        }
+    }
+
+    /**
+     * Get indicator visibility state
      */
     public static boolean isIndicatorVisible() {
         return indicatorVisible;
     }
 
     /**
-     * Sets indicator visibility
+     * Emergency reset (clears all state)
      */
-    public static void setIndicatorVisible(boolean visible) {
-        indicatorVisible = visible;
-    }
-
-    /**
-     * Gets the current runtime targeting mode
-     */
-    public static LockOnConfig.TargetingMode getRuntimeTargetingMode() {
-        return runtimeTargetingMode != null ? runtimeTargetingMode : LockOnConfig.getTargetingMode();
+    public static void emergencyReset() {
+        targetEntity = null;
+        potentialTargets.clear();
+        currentTargetIndex = -1;
+        wasKeyHeld = false;
+        wasLocked = false;
+        runtimeTargetingMode = null;
+        indicatorVisible = true;
+        lastThirdPersonState = false;
+        lastCameraOffset = Vec3.ZERO;
+        LockOnMod.LOGGER.info("Lock-On System emergency reset completed");
     }
 }
