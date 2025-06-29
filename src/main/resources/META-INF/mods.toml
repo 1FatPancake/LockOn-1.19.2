@@ -88,14 +88,15 @@ versionRange="[2.0,)" #optional - supports version 2.0 and above
 ordering="AFTER" #load after third person mod to ensure proper integration
 side="CLIENT" #client-side only dependency
 
-# Optional compatibility with other camera/perspective mods
+# Optional compatibility with Shoulder Surfing Reloaded
 [[dependencies.${mod_id}]]
 modId="shouldersurfing"
-mandatory=false
-versionRange="*"
-ordering="AFTER"
-side="CLIENT"
+mandatory=false #optional - not required but provides enhanced features when present
+versionRange="*" #supports all versions
+ordering="AFTER" #load after third person mod to ensure proper integration
+side="CLIENT" #client-side only dependency
 
+# Optional compatibility with Better Third Person
 [[dependencies.${mod_id}]]
 modId="betterthirdperson"
 mandatory=false

@@ -345,14 +345,25 @@ public class LockOnSystem {
     }
 
     /**
-     * Enhanced input handling
+     * Enhanced input handling with Shoulder Surfing compatibility
      */
     private static void handleInput(LocalPlayer player) {
+        // Check if Shoulder Surfing is interfering
+        boolean isShoulderSurfingActive = ThirdPersonCompatibility.getActiveMod() == ThirdPersonCompatibility.ActiveThirdPersonMod.SHOULDER_SURFING;
+
         boolean lockKeyPressed = LockOnKeybinds.lockOnKey.isDown();
         boolean lockKeyClicked = LockOnKeybinds.lockOnKey.consumeClick();
         boolean cycleKeyClicked = LockOnKeybinds.cycleTargetKey.consumeClick();
         boolean reverseCycleKeyClicked = LockOnKeybinds.cycleTargetReverseKey.consumeClick();
         boolean clearKeyClicked = LockOnKeybinds.clearTargetKey.consumeClick();
+
+        // Debug input detection when Shoulder Surfing is active
+        if (isShoulderSurfingActive && (lockKeyPressed || lockKeyClicked)) {
+            LockOnMod.LOGGER.info("INPUT DEBUG - Shoulder Surfing Active:");
+            LockOnMod.LOGGER.info("  Lock Key Pressed: {}", lockKeyPressed);
+            LockOnMod.LOGGER.info("  Lock Key Clicked: {}", lockKeyClicked);
+            LockOnMod.LOGGER.info("  Current Target: {}", targetEntity != null ? targetEntity.getDisplayName().getString() : "None");
+        }
 
         // Handle lock-on based on configuration mode
         boolean toggleMode = getConfigBoolean("toggleMode", true);
@@ -361,19 +372,24 @@ public class LockOnSystem {
         if (toggleMode) {
             if (lockKeyClicked) {
                 if (targetEntity == null) {
+                    LockOnMod.LOGGER.info("Toggle mode: Attempting to lock target");
                     findAndLockTargetOptimized(player);
                 } else {
+                    LockOnMod.LOGGER.info("Toggle mode: Clearing existing target");
                     clearTarget();
                 }
             }
         } else if (holdMode) {
             if (lockKeyPressed && !wasKeyHeld) {
+                LockOnMod.LOGGER.info("Hold mode: Key pressed, attempting lock");
                 findAndLockTargetOptimized(player);
             } else if (!lockKeyPressed && wasKeyHeld) {
+                LockOnMod.LOGGER.info("Hold mode: Key released, clearing target");
                 clearTarget();
             }
         } else {
             if (lockKeyClicked) {
+                LockOnMod.LOGGER.info("Click mode: Attempting to lock target");
                 findAndLockTargetOptimized(player);
             }
         }
@@ -409,22 +425,33 @@ public class LockOnSystem {
      * Optimized target finding with caching and third person support
      */
     private static void findAndLockTargetOptimized(LocalPlayer player) {
+        // Debug current state
+        LockOnMod.LOGGER.info("=== LOCK-ON ATTEMPT ===");
+        LockOnMod.LOGGER.info("Third Person Mod: {}", ThirdPersonCompatibility.getActiveMod().name());
+        LockOnMod.LOGGER.info("Third Person Active: {}", ThirdPersonCompatibility.isThirdPersonActive());
+
         List<Entity> targets = findValidTargetsOptimized(player);
 
         if (targets.isEmpty()) {
             showMessage(player, "No Valid Targets Found");
             playSound(player, "target_lost");
+            LockOnMod.LOGGER.info("No valid targets found");
             return;
         }
+
+        LockOnMod.LOGGER.info("Found {} potential targets", targets.size());
 
         // Apply third person adjustments to targeting
         if (ThirdPersonCompatibility.isThirdPersonActive()) {
             targets = adjustTargetsForThirdPerson(targets, player);
+            LockOnMod.LOGGER.info("After third person adjustment: {} targets", targets.size());
         }
 
         Entity newTarget = selectBestTargetOptimized(targets, player);
 
         if (newTarget != null) {
+            LockOnMod.LOGGER.info("Selected target: {}", newTarget.getDisplayName().getString());
+
             setTarget(newTarget);
             potentialTargets = targets;
             currentTargetIndex = targets.indexOf(newTarget);
@@ -433,7 +460,12 @@ public class LockOnSystem {
 
             // Reset rotation state for smooth initial lock
             firstRotationFrame = true;
+
+            LockOnMod.LOGGER.info("Lock-on successful!");
+        } else {
+            LockOnMod.LOGGER.warn("Failed to select target from {} candidates", targets.size());
         }
+        LockOnMod.LOGGER.info("======================");
     }
 
     /**
@@ -849,6 +881,7 @@ public class LockOnSystem {
         }
     }
 
+
     /**
      * Normalize angle to [-180, 180] range
      */
@@ -1104,6 +1137,12 @@ public class LockOnSystem {
             showMessage(player, "Indicator Type: Circle"); // Fallback since we can't access config
             playSound(player, "target_switch");
         }
+
+        // NEW: Debug keybind (you can assign this to any key you want)
+        // For now, let's trigger it when both indicator keys are pressed together
+        if (LockOnKeybinds.toggleIndicatorKey.isDown() && LockOnKeybinds.cycleIndicatorTypeKey.isDown()) {
+            debugShoulderSurfingInput(player);
+        }
     }
 
     // === RENDERING EVENT HANDLER ===
@@ -1122,6 +1161,9 @@ public class LockOnSystem {
     /**
      * Sets the target entity
      */
+    /**
+     * Sets the target entity
+     */
     private static void setTarget(Entity target) {
         targetEntity = target;
         wasLocked = true;
@@ -1130,6 +1172,15 @@ public class LockOnSystem {
         entityValidationCache.clear();
         lineOfSightCache.clear();
         entityPositionCache.clear();
+
+        // NEW: Handle third person compatibility and input conflicts
+        ThirdPersonCompatibility.ensurePlayerRotationFollowsCamera();
+
+        // NEW: Specifically handle Shoulder Surfing input conflicts
+        if (ThirdPersonCompatibility.getActiveMod() == ThirdPersonCompatibility.ActiveThirdPersonMod.SHOULDER_SURFING) {
+            ThirdPersonCompatibility.disableShoulderSurfingInput();
+            LockOnMod.LOGGER.debug("Disabled Shoulder Surfing input for lock-on compatibility");
+        }
     }
 
     /**
@@ -1198,12 +1249,22 @@ public class LockOnSystem {
         return entity.getDisplayName().getString();
     }
 
+    // 4. UPDATE your clearTarget method:
     /**
      * Clears the current target
      */
     public static void clearTarget() {
         if (targetEntity != null) {
             onTargetLost();
+
+            // NEW: Restore third person settings and input handling
+            ThirdPersonCompatibility.restorePlayerRotationSettings();
+
+            // NEW: Specifically re-enable Shoulder Surfing input
+            if (ThirdPersonCompatibility.getActiveMod() == ThirdPersonCompatibility.ActiveThirdPersonMod.SHOULDER_SURFING) {
+                ThirdPersonCompatibility.enableShoulderSurfingInput();
+                LockOnMod.LOGGER.debug("Re-enabled Shoulder Surfing input after lock-on");
+            }
         }
         targetEntity = null;
         potentialTargets.clear();
@@ -1334,6 +1395,7 @@ public class LockOnSystem {
      * Emergency reset (clears all state)
      */
     public static void emergencyReset() {
+        // Clear target state first
         targetEntity = null;
         potentialTargets.clear();
         currentTargetIndex = -1;
@@ -1363,7 +1425,17 @@ public class LockOnSystem {
         lastCameraUpdate = 0;
         lastCacheCleanup = 0;
 
-        LockOnMod.LOGGER.info("Lock-On System emergency reset completed with optimizations");
+        // NEW: Restore third person compatibility settings
+        try {
+            ThirdPersonCompatibility.restorePlayerRotationSettings();
+            if (ThirdPersonCompatibility.getActiveMod() == ThirdPersonCompatibility.ActiveThirdPersonMod.SHOULDER_SURFING) {
+                ThirdPersonCompatibility.enableShoulderSurfingInput();
+            }
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to restore third person settings during emergency reset: {}", e.getMessage());
+        }
+
+        LockOnMod.LOGGER.info("Lock-On System emergency reset completed with optimizations and third person compatibility");
     }
 
     /**
@@ -1390,5 +1462,34 @@ public class LockOnSystem {
                         "Active Caches: %d entities",
                 targetingUpdateInterval, cameraUpdateInterval, cacheValidationDuration,
                 entityValidationCache.size());
+    }
+
+    /**
+     * Debug method specifically for Shoulder Surfing input issues
+     */
+    public static void debugShoulderSurfingInput(LocalPlayer player) {
+        if (player == null) return;
+
+        LockOnMod.LOGGER.info("=== SHOULDER SURFING DEBUG ===");
+        LockOnMod.LOGGER.info("Active Mod: {}", ThirdPersonCompatibility.getActiveMod().name());
+        LockOnMod.LOGGER.info("Third Person Active: {}", ThirdPersonCompatibility.isThirdPersonActive());
+        LockOnMod.LOGGER.info("Detailed Status: {}", ThirdPersonCompatibility.getDetailedStatus());
+
+        // Test key states
+        LockOnMod.LOGGER.info("Key States:");
+        LockOnMod.LOGGER.info("  Lock Key Down: {}", LockOnKeybinds.lockOnKey.isDown());
+        LockOnMod.LOGGER.info("  Cycle Key Down: {}", LockOnKeybinds.cycleTargetKey.isDown());
+
+        // Test target state
+        LockOnMod.LOGGER.info("Target State:");
+        LockOnMod.LOGGER.info("  Has Target: {}", hasTarget());
+        LockOnMod.LOGGER.info("  Target Entity: {}", targetEntity != null ? targetEntity.getDisplayName().getString() : "None");
+
+        // Camera state
+        LockOnMod.LOGGER.info("Camera State:");
+        LockOnMod.LOGGER.info("  Player Yaw: {}", player.getYRot());
+        LockOnMod.LOGGER.info("  Player Pitch: {}", player.getXRot());
+
+        LockOnMod.LOGGER.info("==============================");
     }
 }
