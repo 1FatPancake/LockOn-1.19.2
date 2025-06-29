@@ -1,5 +1,6 @@
 package net.leolifeless.lockonmod;
 
+import net.leolifeless.lockonmod.compat.ThirdPersonCompatibility;
 import net.minecraftforge.common.ForgeConfigSpec;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -120,6 +121,28 @@ public class LockOnConfig {
         public final ForgeConfigSpec.IntValue maxTargetsToSearch;
         public final ForgeConfigSpec.BooleanValue disableInCreative;
         public final ForgeConfigSpec.BooleanValue disableInSpectator;
+
+
+        // === THIRD PERSON COMPATIBILITY SETTINGS (only add if not already present) ===
+        public final ForgeConfigSpec.BooleanValue enableThirdPersonEnhancements;
+        public final ForgeConfigSpec.DoubleValue thirdPersonRangeMultiplier;
+        public final ForgeConfigSpec.DoubleValue thirdPersonAngleMultiplier;
+        public final ForgeConfigSpec.DoubleValue thirdPersonSmoothingFactor;
+        public final ForgeConfigSpec.DoubleValue thirdPersonRotationSpeedMultiplier;
+        public final ForgeConfigSpec.DoubleValue thirdPersonIndicatorSizeMultiplier;
+        public final ForgeConfigSpec.BooleanValue adjustForCameraOffset;
+        public final ForgeConfigSpec.BooleanValue enhancedThirdPersonSmoothing;
+        public final ForgeConfigSpec.BooleanValue autoDetectThirdPerson;
+
+        // === PERFORMANCE SETTINGS ===
+        public final ForgeConfigSpec.IntValue targetingUpdateInterval;
+        public final ForgeConfigSpec.IntValue cameraUpdateInterval;
+        public final ForgeConfigSpec.IntValue cacheValidationDuration;
+        public final ForgeConfigSpec.BooleanValue enablePerformanceMode;
+        public final ForgeConfigSpec.BooleanValue enableTargetPrediction;
+        public final ForgeConfigSpec.BooleanValue enableAdaptiveSmoothing;
+        public final ForgeConfigSpec.DoubleValue microMovementThreshold;
+        public final ForgeConfigSpec.DoubleValue positionSmoothingFactor;
 
         ClientConfig(ForgeConfigSpec.Builder builder) {
             builder.comment("Enhanced Lock-On Mod Client Configuration")
@@ -401,6 +424,84 @@ public class LockOnConfig {
                     .define("disableInSpectator", true);
 
             builder.pop();
+
+            builder.comment("Third Person Compatibility Settings").push("thirdPersonCompat");
+
+            enableThirdPersonEnhancements = builder
+                    .comment("Enable enhanced features when third-person mods are detected")
+                    .define("enableThirdPersonEnhancements", true);
+
+            thirdPersonRangeMultiplier = builder
+                    .comment("Multiplier for targeting range in third person mode")
+                    .defineInRange("thirdPersonRangeMultiplier", 1.2, 0.5, 3.0);
+
+            thirdPersonAngleMultiplier = builder
+                    .comment("Multiplier for targeting angle in third person mode")
+                    .defineInRange("thirdPersonAngleMultiplier", 1.3, 0.5, 2.0);
+
+            thirdPersonSmoothingFactor = builder
+                    .comment("Additional smoothing factor for third person camera")
+                    .defineInRange("thirdPersonSmoothingFactor", 1.15, 0.5, 2.0);
+
+            thirdPersonRotationSpeedMultiplier = builder
+                    .comment("Rotation speed multiplier for third person mode")
+                    .defineInRange("thirdPersonRotationSpeedMultiplier", 0.85, 0.1, 2.0);
+
+            thirdPersonIndicatorSizeMultiplier = builder
+                    .comment("Indicator size multiplier for third person mode")
+                    .defineInRange("thirdPersonIndicatorSizeMultiplier", 1.0, 0.5, 2.0);
+
+            adjustForCameraOffset = builder
+                    .comment("Adjust targeting calculations for third person camera offset")
+                    .define("adjustForCameraOffset", true);
+
+            enhancedThirdPersonSmoothing = builder
+                    .comment("Use enhanced smoothing algorithms in third person")
+                    .define("enhancedThirdPersonSmoothing", true);
+
+            autoDetectThirdPerson = builder
+                    .comment("Automatically detect and adjust for third person perspective")
+                    .define("autoDetectThirdPerson", true);
+
+            builder.pop();
+
+            // Performance Settings
+            builder.comment("Performance Settings").push("performance");
+
+            targetingUpdateInterval = builder
+                    .comment("How often to update targeting in ticks")
+                    .defineInRange("targetingUpdateInterval", 3, 1, 20);
+
+            cameraUpdateInterval = builder
+                    .comment("How often to update camera rotation in ticks")
+                    .defineInRange("cameraUpdateInterval", 1, 1, 10);
+
+            cacheValidationDuration = builder
+                    .comment("How long to cache validation results in milliseconds")
+                    .defineInRange("cacheValidationDuration", 100, 50, 1000);
+
+            enablePerformanceMode = builder
+                    .comment("Enable performance optimizations")
+                    .define("enablePerformanceMode", false);
+
+            enableTargetPrediction = builder
+                    .comment("Enable target movement prediction")
+                    .define("enableTargetPrediction", true);
+
+            enableAdaptiveSmoothing = builder
+                    .comment("Enable adaptive smoothing")
+                    .define("enableAdaptiveSmoothing", true);
+
+            microMovementThreshold = builder
+                    .comment("Threshold for micro-movements")
+                    .defineInRange("microMovementThreshold", 1.0, 0.1, 5.0);
+
+            positionSmoothingFactor = builder
+                    .comment("Factor for smoothing target position")
+                    .defineInRange("positionSmoothingFactor", 0.7, 0.0, 0.95);
+
+            builder.pop();
+
             builder.pop(); // End general
         }
     }
@@ -493,6 +594,74 @@ public class LockOnConfig {
     public static boolean showHealthBar() { return CLIENT.showHealthBar.get(); }
     public static boolean showTargetName() { return CLIENT.showTargetName.get(); }
     public static DistanceUnit getDistanceUnit() { return CLIENT.distanceUnit.get(); }
+    public static boolean areThirdPersonEnhancementsEnabled() {
+        return CLIENT.enableThirdPersonEnhancements.get();
+    }
+
+    public static double getThirdPersonRangeMultiplier() {
+        return CLIENT.thirdPersonRangeMultiplier.get();
+    }
+
+    public static double getThirdPersonAngleMultiplier() {
+        return CLIENT.thirdPersonAngleMultiplier.get();
+    }
+
+    public static double getThirdPersonSmoothingFactor() {
+        return CLIENT.thirdPersonSmoothingFactor.get();
+    }
+
+    public static double getThirdPersonRotationSpeedMultiplier() {
+        return CLIENT.thirdPersonRotationSpeedMultiplier.get();
+    }
+
+    public static double getThirdPersonIndicatorSizeMultiplier() {
+        return CLIENT.thirdPersonIndicatorSizeMultiplier.get();
+    }
+
+    public static boolean shouldAdjustForCameraOffset() {
+        return CLIENT.adjustForCameraOffset.get();
+    }
+
+    public static boolean isEnhancedThirdPersonSmoothingEnabled() {
+        return CLIENT.enhancedThirdPersonSmoothing.get();
+    }
+
+    public static boolean isAutoDetectThirdPersonEnabled() {
+        return CLIENT.autoDetectThirdPerson.get();
+    }
+
+    // Performance Settings
+    public static int getTargetingUpdateInterval() {
+        return CLIENT.targetingUpdateInterval.get();
+    }
+
+    public static int getCameraUpdateInterval() {
+        return CLIENT.cameraUpdateInterval.get();
+    }
+
+    public static int getCacheValidationDuration() {
+        return CLIENT.cacheValidationDuration.get();
+    }
+
+    public static boolean isPerformanceModeEnabled() {
+        return CLIENT.enablePerformanceMode.get();
+    }
+
+    public static boolean isTargetPredictionEnabled() {
+        return CLIENT.enableTargetPrediction.get();
+    }
+
+    public static boolean isAdaptiveSmoothingEnabled() {
+        return CLIENT.enableAdaptiveSmoothing.get();
+    }
+
+    public static double getMicroMovementThreshold() {
+        return CLIENT.microMovementThreshold.get();
+    }
+
+    public static double getPositionSmoothingFactor() {
+        return CLIENT.positionSmoothingFactor.get();
+    }
 
     public static Color getIndicatorColor() {
         return new Color(CLIENT.indicatorColorRed.get(), CLIENT.indicatorColorGreen.get(),
@@ -552,5 +721,36 @@ public class LockOnConfig {
     @SubscribeEvent
     public static void onReload(final ModConfigEvent.Reloading configEvent) {
         LockOnMod.LOGGER.debug("Enhanced Target Lock Mod config reloaded");
+    }
+    public static double getMaxLockOnDistanceEnhanced() {
+        double baseDistance = CLIENT.maxLockOnDistance.get(); // Use your existing config field
+        if (ThirdPersonCompatibility.isThirdPersonActive() && areThirdPersonEnhancementsEnabled()) {
+            return ThirdPersonCompatibility.getAdjustedTargetingRange(baseDistance);
+        }
+        return baseDistance;
+    }
+
+    public static double getTargetingAngleEnhanced() {
+        double baseAngle = CLIENT.targetingAngle.get(); // Use your existing config field
+        if (ThirdPersonCompatibility.isThirdPersonActive() && areThirdPersonEnhancementsEnabled()) {
+            return ThirdPersonCompatibility.getAdjustedTargetingAngle(baseAngle);
+        }
+        return baseAngle;
+    }
+
+    public static float getIndicatorSizeEnhanced() {
+        float baseSize = CLIENT.indicatorSize.get().floatValue(); // Use your existing config field
+        if (ThirdPersonCompatibility.isThirdPersonActive() && areThirdPersonEnhancementsEnabled()) {
+            return ThirdPersonCompatibility.getAdjustedIndicatorSize(baseSize);
+        }
+        return baseSize;
+    }
+
+    public static float getRotationSpeedEnhanced() {
+        float baseSpeed = CLIENT.rotationSpeed.get().floatValue(); // Use your existing config field
+        if (ThirdPersonCompatibility.isThirdPersonActive() && areThirdPersonEnhancementsEnabled()) {
+            return ThirdPersonCompatibility.getAdjustedRotationSpeed(baseSpeed);
+        }
+        return baseSpeed;
     }
 }
