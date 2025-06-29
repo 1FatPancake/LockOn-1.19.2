@@ -906,6 +906,22 @@ public class LockOnSystem {
     }
 
     /**
+     * Enhanced rendering for indicator display
+     */
+    @SubscribeEvent
+    public static void onRenderLevel(RenderLevelStageEvent event) {
+        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) return;
+        if (targetEntity == null || !indicatorVisible) return;
+
+        Minecraft mc = Minecraft.getInstance();
+        LocalPlayer player = mc.player;
+        if (player == null) return;
+
+        // Use the correct method signature that matches your current LockOnRenderer
+        LockOnRenderer.renderLockOnIndicator(event, targetEntity);
+    }
+
+    /**
      * Adjust target list for third person perspective
      */
     private static List<Entity> adjustTargetsForThirdPerson(List<Entity> targets, LocalPlayer player) {
