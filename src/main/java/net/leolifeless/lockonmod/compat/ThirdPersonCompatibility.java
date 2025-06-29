@@ -12,8 +12,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
 /**
- * Compatibility handler for Leawind's Third Person mod (1.20.1 version)
- * Provides enhanced lock-on functionality when third person mod is present
+ * Fixed compatibility handler for Leawind's Third Person mod
  */
 public class ThirdPersonCompatibility {
     private static final Logger LOGGER = LogUtils.getLogger();
@@ -24,11 +23,10 @@ public class ThirdPersonCompatibility {
 
     // Reflection fields/methods for third person mod integration
     private static Class<?> thirdPersonConfigClass;
-    private static Class<?> cameraAgentClass;
+    private static Class<?> thirdPersonCameraClass;
     private static Method isModEnabledMethod;
     private static Method getCameraOffsetMethod;
-    private static Method isFlyingCenteredMethod;
-    private static Field cameraEntityField;
+    private static Field configEnabledField;
 
     static {
         checkModPresence();
@@ -44,43 +42,85 @@ public class ThirdPersonCompatibility {
         isThirdPersonModLoaded = ModList.get().isLoaded(THIRD_PERSON_MOD_ID);
         if (isThirdPersonModLoaded) {
             LOGGER.info("Leawind's Third Person mod detected - enabling enhanced compatibility");
-        } else {
-            LOGGER.debug("Leawind's Third Person mod not detected");
         }
     }
 
     /**
-     * Initialize compatibility features using reflection (updated for 1.20.1)
+     * Initialize compatibility features using reflection with better error handling
      */
     private static void initializeCompatibility() {
         try {
-            // Updated class paths for 1.20.1 version of Leawind's Third Person
-            thirdPersonConfigClass = Class.forName("com.github.leawind.thirdperson.config.Config");
-            cameraAgentClass = Class.forName("com.github.leawind.thirdperson.core.CameraAgent");
+            // Try the most common class paths for different versions
+            String[] possibleConfigClasses = {
+                    "com.github.leawind.thirdperson.config.Config",
+                    "com.github.leawind.thirdperson.Config",
+                    "leawind.thirdperson.config.Config",
+                    "leawind.thirdperson.Config"
+            };
 
-            // Get methods for checking mod state
-            isModEnabledMethod = thirdPersonConfigClass.getMethod("isAvailable");
-            getCameraOffsetMethod = cameraAgentClass.getMethod("getCameraOffset");
-
-            // Try to get flying centered method (may not exist in all versions)
-            try {
-                isFlyingCenteredMethod = thirdPersonConfigClass.getMethod("centerOffsetWhenFlying");
-            } catch (NoSuchMethodException e) {
-                LOGGER.debug("Flying centered method not found - using alternative approach");
+            // Try to find the config class
+            for (String className : possibleConfigClasses) {
+                try {
+                    thirdPersonConfigClass = Class.forName(className);
+                    LOGGER.info("Found third person config class: {}", className);
+                    break;
+                } catch (ClassNotFoundException e) {
+                    // Try next class name
+                }
             }
 
-            // Try to get camera entity field
-            try {
-                cameraEntityField = cameraAgentClass.getDeclaredField("cameraEntity");
-                cameraEntityField.setAccessible(true);
-            } catch (NoSuchFieldException e) {
-                LOGGER.debug("Camera entity field not found - using alternative approach");
+            if (thirdPersonConfigClass == null) {
+                LOGGER.warn("Could not find third person config class, using basic detection");
+                isInitialized = false;
+                return;
             }
 
-            isInitialized = true;
-            LOGGER.info("Third person compatibility initialized successfully for 1.20.1");
+            // Try to find available methods - be flexible about method names
+            String[] possibleEnabledMethods = {
+                    "isModEnabled",
+                    "isEnabled",
+                    "isAvailable",
+                    "enabled"
+            };
 
-        } catch (ClassNotFoundException | NoSuchMethodException e) {
+            for (String methodName : possibleEnabledMethods) {
+                try {
+                    isModEnabledMethod = thirdPersonConfigClass.getMethod(methodName);
+                    LOGGER.info("Found enabled method: {}", methodName);
+                    break;
+                } catch (NoSuchMethodException e) {
+                    // Try next method name
+                }
+            }
+
+            // Try to find enabled field if no method found
+            if (isModEnabledMethod == null) {
+                String[] possibleEnabledFields = {
+                        "enabled",
+                        "isEnabled",
+                        "modEnabled"
+                };
+
+                for (String fieldName : possibleEnabledFields) {
+                    try {
+                        configEnabledField = thirdPersonConfigClass.getField(fieldName);
+                        LOGGER.info("Found enabled field: {}", fieldName);
+                        break;
+                    } catch (NoSuchFieldException e) {
+                        // Try next field name
+                    }
+                }
+            }
+
+            isInitialized = (isModEnabledMethod != null || configEnabledField != null);
+
+            if (isInitialized) {
+                LOGGER.info("Third person compatibility initialized successfully");
+            } else {
+                LOGGER.warn("Could not find enabled method/field, using basic camera detection");
+            }
+
+        } catch (Exception e) {
             LOGGER.warn("Failed to initialize third person compatibility - using basic integration: {}", e.getMessage());
             LOGGER.warn("This might be due to version differences in Leawind's Third Person mod");
             isInitialized = false;
@@ -91,82 +131,72 @@ public class ThirdPersonCompatibility {
      * Check if the third person mod is currently active and enabled
      */
     public static boolean isThirdPersonActive() {
-        if (!isThirdPersonModLoaded || !isInitialized) {
+        if (!isThirdPersonModLoaded) {
             return false;
         }
 
         try {
-            // Check if mod is enabled in config
-            Boolean modEnabled = (Boolean) isModEnabledMethod.invoke(null);
-            if (modEnabled == null || !modEnabled) {
-                return false;
+            // Method 1: Try to check via config if available
+            if (isInitialized) {
+                if (isModEnabledMethod != null) {
+                    Boolean modEnabled = (Boolean) isModEnabledMethod.invoke(null);
+                    if (modEnabled == null || !modEnabled) {
+                        return false;
+                    }
+                } else if (configEnabledField != null) {
+                    Boolean modEnabled = (Boolean) configEnabledField.get(null);
+                    if (modEnabled == null || !modEnabled) {
+                        return false;
+                    }
+                }
             }
 
-            // Check if we're actually in third person view
+            // Method 2: Always check camera perspective as fallback
             Minecraft mc = Minecraft.getInstance();
-            return !mc.options.getCameraType().isFirstPerson();
+            if (mc.options == null) return false;
+
+            // Check if we're in third person view
+            boolean isThirdPerson = !mc.options.getCameraType().isFirstPerson();
+
+            return isThirdPerson;
 
         } catch (Exception e) {
-            LOGGER.debug("Error checking third person state: {}", e.getMessage());
-            return false;
+            LOGGER.debug("Error checking third person state, using basic detection: {}", e.getMessage());
+
+            // Fallback: just check camera type
+            try {
+                Minecraft mc = Minecraft.getInstance();
+                return mc.options != null && !mc.options.getCameraType().isFirstPerson();
+            } catch (Exception fallbackError) {
+                return false;
+            }
         }
     }
 
     /**
-     * Get the current camera offset from third person mod (1.20.1 compatible)
+     * Get the current camera offset from third person mod (with fallback)
      */
     public static Vec3 getThirdPersonCameraOffset() {
         if (!isThirdPersonActive()) {
             return Vec3.ZERO;
         }
 
-        try {
-            Object offset = getCameraOffsetMethod.invoke(null);
-            if (offset instanceof Vec3) {
-                return (Vec3) offset;
+        // Since we can't reliably get the exact offset, provide a reasonable default
+        // This is based on typical third person camera distances
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player != null) {
+            // Estimate based on camera type
+            switch (mc.options.getCameraType()) {
+                case THIRD_PERSON_BACK:
+                    return new Vec3(0, 0, -4.0); // Behind player
+                case THIRD_PERSON_FRONT:
+                    return new Vec3(0, 0, 4.0);  // In front of player
+                default:
+                    return Vec3.ZERO;
             }
-            // Handle other possible return types
-            if (offset instanceof double[]) {
-                double[] offsetArray = (double[]) offset;
-                if (offsetArray.length >= 3) {
-                    return new Vec3(offsetArray[0], offsetArray[1], offsetArray[2]);
-                }
-            }
-        } catch (Exception e) {
-            LOGGER.debug("Error getting camera offset: {}", e.getMessage());
         }
 
         return Vec3.ZERO;
-    }
-
-    /**
-     * Check if camera is centered due to flying (elytra) - 1.20.1 compatible
-     */
-    public static boolean isCameraCenteredForFlying() {
-        if (!isThirdPersonActive()) {
-            return false;
-        }
-
-        try {
-            LocalPlayer player = Minecraft.getInstance().player;
-            if (player == null) return false;
-
-            // Check if player is flying with elytra
-            boolean isFlying = player.isFallFlying();
-
-            // Check if third person mod centers camera when flying (if method exists)
-            if (isFlyingCenteredMethod != null) {
-                Boolean centerWhenFlying = (Boolean) isFlyingCenteredMethod.invoke(null);
-                return isFlying && (centerWhenFlying != null && centerWhenFlying);
-            }
-
-            // Fallback: assume centering when flying
-            return isFlying;
-
-        } catch (Exception e) {
-            LOGGER.debug("Error checking flying state: {}", e.getMessage());
-            return false;
-        }
     }
 
     /**
@@ -177,12 +207,12 @@ public class ThirdPersonCompatibility {
             return baseRange;
         }
 
-        // Increase range slightly in third person for better UX
+        // Increase range in third person for better UX
         Vec3 cameraOffset = getThirdPersonCameraOffset();
         double offsetDistance = cameraOffset.length();
 
         // Add 20% to base range plus the camera offset distance
-        return baseRange * 1.2 + Math.min(offsetDistance, 5.0); // Cap offset influence
+        return baseRange * 1.2 + offsetDistance;
     }
 
     /**
@@ -210,8 +240,7 @@ public class ThirdPersonCompatibility {
             Vec3 cameraOffset = getThirdPersonCameraOffset();
 
             // Slightly adjust indicator position to account for perspective
-            // Reduce the influence to prevent over-adjustment
-            return basePosition.add(cameraOffset.scale(0.05));
+            return basePosition.add(cameraOffset.scale(0.1));
 
         } catch (Exception e) {
             return basePosition;
@@ -234,7 +263,7 @@ public class ThirdPersonCompatibility {
         }
 
         // Use slightly more smoothing in third person for better camera feel
-        return Math.min(baseFactor * 1.15f, 0.95f); // Cap at 0.95 to prevent over-smoothing
+        return Math.min(baseFactor * 1.15f, 1.0f);
     }
 
     /**
@@ -261,8 +290,8 @@ public class ThirdPersonCompatibility {
         double distance = cameraOffset.length();
 
         // Scale indicator slightly based on camera distance
-        float scaleFactor = 1.0f + (float)(distance * 0.03); // Reduced scaling factor
-        return baseSize * Math.min(scaleFactor, 1.3f); // Reduced max scaling
+        float scaleFactor = 1.0f + (float)(distance * 0.05);
+        return baseSize * Math.min(scaleFactor, 1.5f);
     }
 
     /**
@@ -281,13 +310,6 @@ public class ThirdPersonCompatibility {
     }
 
     /**
-     * Get the mod ID for dependency checking
-     */
-    public static String getModId() {
-        return THIRD_PERSON_MOD_ID;
-    }
-
-    /**
      * Public getter for mod loaded status
      */
     public static boolean isModLoaded() {
@@ -302,26 +324,27 @@ public class ThirdPersonCompatibility {
     }
 
     /**
-     * Force refresh compatibility state (useful for config reloads)
+     * Debug method to get detailed information
      */
-    public static void refresh() {
-        if (isThirdPersonModLoaded) {
-            initializeCompatibility();
-        }
-    }
-
-    /**
-     * Get detailed debug information
-     */
-    public static String getDebugInfo() {
+    public static String getDetailedStatus() {
         StringBuilder sb = new StringBuilder();
-        sb.append("Mod Loaded: ").append(isThirdPersonModLoaded).append("\n");
-        sb.append("Initialized: ").append(isInitialized).append("\n");
-        sb.append("Active: ").append(isThirdPersonActive()).append("\n");
-        if (isThirdPersonActive()) {
-            Vec3 offset = getThirdPersonCameraOffset();
-            sb.append("Camera Offset: ").append(String.format("%.2f, %.2f, %.2f", offset.x, offset.y, offset.z)).append("\n");
+        sb.append("Third Person Compatibility Status:\n");
+        sb.append("- Mod Loaded: ").append(isThirdPersonModLoaded).append("\n");
+        sb.append("- Initialized: ").append(isInitialized).append("\n");
+        sb.append("- Currently Active: ").append(isThirdPersonActive()).append("\n");
+        sb.append("- Config Class Found: ").append(thirdPersonConfigClass != null ? thirdPersonConfigClass.getName() : "None").append("\n");
+        sb.append("- Enabled Method Found: ").append(isModEnabledMethod != null ? isModEnabledMethod.getName() : "None").append("\n");
+        sb.append("- Enabled Field Found: ").append(configEnabledField != null ? configEnabledField.getName() : "None").append("\n");
+
+        try {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.options != null) {
+                sb.append("- Camera Type: ").append(mc.options.getCameraType()).append("\n");
+            }
+        } catch (Exception e) {
+            sb.append("- Camera Type: Error getting camera type\n");
         }
+
         return sb.toString();
     }
 }

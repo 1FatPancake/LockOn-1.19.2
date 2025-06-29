@@ -626,8 +626,10 @@ public class LockOnSystem {
         }
     }
 
+    // Replace your updateCameraRotationOptimized method with this faster but still smooth version:
+
     /**
-     * Aggressive camera rotation for testing - WORKING VERSION
+     * Balanced camera rotation - faster but smooth
      */
     private static void updateCameraRotationOptimized(LocalPlayer player) {
         if (targetEntity == null || !targetEntity.isAlive()) {
@@ -638,17 +640,17 @@ public class LockOnSystem {
             return;
         }
 
-        // Debug info
+        // Debug info (keep your original debug)
         debugCameraRotation(player, targetEntity);
 
-        // FORCE ENABLE for testing - ignore config
+        // FORCE ENABLE for testing - ignore config (keep your original logic)
         boolean smoothCamera = true; // Force enabled
         if (!smoothCamera) {
             LockOnMod.LOGGER.info("Smooth camera is DISABLED in config");
             return;
         }
 
-        // Calculate target rotation directly (no third person adjustments for now)
+        // Calculate target rotation directly (keep your original third person adjustments)
         Vec3 playerEyePos = player.getEyePosition();
         Vec3 targetPos = targetEntity.getEyePosition();
 
@@ -661,28 +663,61 @@ public class LockOnSystem {
         float currentYaw = player.getYRot();
         float currentPitch = player.getXRot();
 
-        // AGGRESSIVE rotation speed for testing
-        float rotationSpeed = 0.5f; // Very high speed
-
-        // Calculate angle differences
+        // ADAPTIVE rotation speed based on distance and angle difference
+        float distance = player.distanceTo(targetEntity);
         float yawDiff = normalizeAngle(targetYaw - currentYaw);
         float pitchDiff = targetPitch - currentPitch;
 
-        // Apply aggressive rotation
+        // Calculate adaptive speed
+        float baseSpeed = 0.65f; // Increased from 0.15f
+
+        // Distance scaling - closer targets need faster rotation
+        float distanceScale = 1.0f;
+        if (distance < 2.0) {
+            distanceScale = 2.0f; // Much faster for very close targets
+        } else if (distance < 5.0) {
+            distanceScale = 1.5f; // Faster for close targets
+        } else if (distance > 15.0) {
+            distanceScale = 0.7f; // Slightly slower for far targets
+        }
+
+        // Angle scaling - bigger differences need faster rotation
+        float angleDiff = Math.abs(yawDiff) + Math.abs(pitchDiff);
+        float angleScale = 1.0f;
+        if (angleDiff > 30.0f) {
+            angleScale = 2.0f; // Much faster for large angle differences
+        } else if (angleDiff > 10.0f) {
+            angleScale = 1.5f; // Faster for medium angle differences
+        }
+
+        float rotationSpeed = baseSpeed * distanceScale * angleScale;
+
+        // Cap the maximum speed to prevent wild spinning
+        rotationSpeed = Math.min(rotationSpeed, 0.8f);
+
+        // Reduce micro-movement threshold for more responsive tracking
+        if (Math.abs(yawDiff) < 0.2f && Math.abs(pitchDiff) < 0.2f) {
+            return; // Skip very small movements
+        }
+
+        // Apply ADAPTIVE rotation
         float newYaw = currentYaw + yawDiff * rotationSpeed;
         float newPitch = currentPitch + pitchDiff * rotationSpeed;
 
         // Clamp pitch
         newPitch = Math.max(-90.0f, Math.min(90.0f, newPitch));
 
-        // Log every rotation attempt
-        LockOnMod.LOGGER.info("ROTATION ATTEMPT:");
+        // Log rotation info with new adaptive values
+        LockOnMod.LOGGER.info("ADAPTIVE ROTATION:");
+        LockOnMod.LOGGER.info("  Distance: {}, Angle Diff: {}", distance, angleDiff);
+        LockOnMod.LOGGER.info("  Distance Scale: {}, Angle Scale: {}", distanceScale, angleScale);
+        LockOnMod.LOGGER.info("  Final Speed: {}", rotationSpeed);
         LockOnMod.LOGGER.info("  Current Yaw/Pitch: {}/{}", currentYaw, currentPitch);
         LockOnMod.LOGGER.info("  Target Yaw/Pitch: {}/{}", targetYaw, targetPitch);
         LockOnMod.LOGGER.info("  Applying Yaw/Pitch: {}/{}", newYaw, newPitch);
         LockOnMod.LOGGER.info("  Differences: {}/{}", yawDiff, pitchDiff);
 
-        // Try multiple rotation methods
+        // Keep your original rotation methods but with adaptive speed
         try {
             // Method 1: Direct setters
             player.setYRot(newYaw);
@@ -693,9 +728,9 @@ public class LockOnSystem {
             player.setYHeadRot(newYaw);
             LockOnMod.LOGGER.info("Applied Method 2: setYHeadRot");
 
-            // Method 3: Turn method
-            player.turn(yawDiff * rotationSpeed, pitchDiff * rotationSpeed);
-            LockOnMod.LOGGER.info("Applied Method 3: turn");
+            // Method 3: Turn method (with adaptive speed)
+            player.turn(yawDiff * rotationSpeed * 0.3f, pitchDiff * rotationSpeed * 0.3f);
+            LockOnMod.LOGGER.info("Applied Method 3: turn (adaptive)");
 
             // Method 4: Force previous rotation values
             player.yRotO = newYaw;
@@ -706,7 +741,7 @@ public class LockOnSystem {
             LockOnMod.LOGGER.error("Failed to apply camera rotation: {}", e.getMessage());
         }
 
-        // Verify the rotation was applied
+        // Verify the rotation was applied (keep your original verification)
         float verifyYaw = player.getYRot();
         float verifyPitch = player.getXRot();
         LockOnMod.LOGGER.info("VERIFICATION - Final Yaw/Pitch: {}/{}", verifyYaw, verifyPitch);
