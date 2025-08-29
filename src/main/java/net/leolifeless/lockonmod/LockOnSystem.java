@@ -536,6 +536,44 @@ public class LockOnSystem {
         if (entity instanceof Animal && !canTargetPassives) return false;
         if ((entity instanceof WitherBoss || entity instanceof EnderDragon) && !canTargetBosses) return false;
 
+        // === ADD THIS MISSING BLACKLIST/WHITELIST VALIDATION ===
+        ResourceLocation entityId = EntityType.getKey(entity.getType());
+        String entityIdString = entityId.toString();
+
+        // Debug logging
+        LockOnMod.LOGGER.info("=== TARGETING DEBUG ===");
+        LockOnMod.LOGGER.info("Entity: {} (ID: {})", entity.getDisplayName().getString(), entityIdString);
+        LockOnMod.LOGGER.info("Use Whitelist: {}", LockOnConfig.useWhitelist());
+
+        if (LockOnConfig.useWhitelist()) {
+            List<String> whitelist = LockOnConfig.getEntityWhitelist();
+            LockOnMod.LOGGER.info("Whitelist: {}", whitelist);
+
+            boolean inWhitelist = whitelist.contains(entityIdString);
+            LockOnMod.LOGGER.info("Entity {} {} in whitelist", entityIdString, inWhitelist ? "IS" : "IS NOT");
+
+            if (!inWhitelist) {
+                LockOnMod.LOGGER.info("REJECTED: Entity {} not in whitelist", entityIdString);
+                return false;
+            } else {
+                LockOnMod.LOGGER.info("ACCEPTED: Entity {} found in whitelist", entityIdString);
+            }
+        } else {
+            List<String> blacklist = LockOnConfig.getEntityBlacklist();
+            LockOnMod.LOGGER.info("Blacklist: {}", blacklist);
+
+            boolean inBlacklist = blacklist.contains(entityIdString);
+            LockOnMod.LOGGER.info("Entity {} {} in blacklist", entityIdString, inBlacklist ? "IS" : "IS NOT");
+
+            if (inBlacklist) {
+                LockOnMod.LOGGER.info("REJECTED: Entity {} found in blacklist", entityIdString);
+                return false;
+            } else {
+                LockOnMod.LOGGER.info("ACCEPTED: Entity {} not in blacklist", entityIdString);
+            }
+        }
+
+        LockOnMod.LOGGER.info("=== END DEBUG ===");
         return true;
     }
 

@@ -8,6 +8,7 @@ import net.minecraftforge.fml.event.config.ModConfigEvent;
 import org.apache.commons.lang3.tuple.Pair;
 
 import java.awt.*;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -359,12 +360,16 @@ public class LockOnConfig {
                     .defineInRange("maxTargetHealth", 0.0, 0.0, 1000.0);
 
             entityBlacklist = builder
-                    .comment("List of entity types to never target (e.g., 'minecraft:pig', 'minecraft:cow')")
-                    .defineList("entityBlacklist", Arrays.asList(), obj -> obj instanceof String);
+                    .comment("List of entity IDs to never target")
+                    .defineListAllowEmpty("entityBlacklist",
+                            Arrays.asList("minecraft:villager", "minecraft:cat"),
+                            obj -> obj instanceof String);
 
             entityWhitelist = builder
-                    .comment("List of entity types to exclusively target (empty = target all allowed)")
-                    .defineList("entityWhitelist", Arrays.asList(), obj -> obj instanceof String);
+                    .comment("List of entity IDs to exclusively target (when whitelist is enabled)")
+                    .defineListAllowEmpty("entityWhitelist",
+                            Arrays.asList(),
+                            obj -> obj instanceof String);
 
             useWhitelist = builder
                     .comment("Use whitelist instead of blacklist")
@@ -693,8 +698,25 @@ public class LockOnConfig {
     public static boolean canTargetOwned() { return CLIENT.targetOwned.get(); }
     public static float getMinTargetHealth() { return CLIENT.minTargetHealth.get().floatValue(); }
     public static float getMaxTargetHealth() { return CLIENT.maxTargetHealth.get().floatValue(); }
-    public static List<? extends String> getEntityBlacklist() { return CLIENT.entityBlacklist.get(); }
-    public static List<? extends String> getEntityWhitelist() { return CLIENT.entityWhitelist.get(); }
+
+    public static List<String> getEntityBlacklist() {
+        List<? extends String> rawList = CLIENT.entityBlacklist.get();
+        if (rawList == null) {
+            return new ArrayList<>();
+        }
+        // Convert wildcard list to concrete String list
+        return new ArrayList<>(rawList);
+    }
+
+    public static List<String> getEntityWhitelist() {
+        List<? extends String> rawList = CLIENT.entityWhitelist.get();
+        if (rawList == null) {
+            return new ArrayList<>();
+        }
+        // Convert wildcard list to concrete String list
+        return new ArrayList<>(rawList);
+    }
+
     public static boolean useWhitelist() { return CLIENT.useWhitelist.get(); }
 
     public static boolean areSoundsEnabled() { return CLIENT.enableSounds.get(); }
