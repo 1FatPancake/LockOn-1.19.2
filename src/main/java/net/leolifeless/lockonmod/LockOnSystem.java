@@ -68,6 +68,13 @@ public class LockOnSystem {
     private static int cameraUpdateInterval = 1;
     private static long cacheValidationDuration = 100;
 
+    // === SYNC PROTECTION STATE (NEW) ===
+    private static int lagTimeout = 0;
+    private static final int MAX_LAG_TIMEOUT = 100; // 5 seconds at 20 TPS
+    private static int syncCheckCounter = 0;
+    private static long lastServerResponseTime = 0;
+    private static boolean wasNetworkLagging = false;
+
     // === PUBLIC ACCESSORS ===
 
     /**
@@ -118,12 +125,18 @@ public class LockOnSystem {
         // Update performance settings from config
         updatePerformanceSettings();
 
-        // Fixed: Use mc.level instead of mc.level() for 1.19.2
         long currentTick = mc.level.getGameTime();
         long currentTime = System.currentTimeMillis();
 
+        // NEW: Automatic sync checking (configurable)
+        syncCheckCounter++;
+        if (syncCheckCounter >= 60) { // Check every 3 seconds
+            syncCheckCounter = 0;
+            performAutomaticSyncCheck(player);
+        }
+
         // Check for third person state changes (less frequently for performance)
-        if (currentTime - lastThirdPersonCheck > 500) { // Check every 500ms
+        if (currentTime - lastThirdPersonCheck > 500) {
             checkThirdPersonStateChange();
             lastThirdPersonCheck = currentTime;
         }
@@ -139,12 +152,18 @@ public class LockOnSystem {
 
         // Separate update intervals for different operations
         if (currentTick - lastTargetingUpdate >= targetingUpdateInterval) {
-            updateTargetingOptimized(player, currentTick);
+            updateTargetingOptimizedWithSync(player, currentTick); // NEW: Enhanced method
             lastTargetingUpdate = currentTick;
         }
 
+        // Only update camera if not experiencing lag (NEW)
+        boolean skipCameraOnLag = true; // You can make this configurable
+        boolean isLagging = isNetworkLagging(player);
+
         if (currentTick - lastCameraUpdate >= cameraUpdateInterval) {
-            updateCameraRotationOptimized(player);
+            if (!skipCameraOnLag || !isLagging) {
+                updateCameraRotationOptimized(player);
+            }
             lastCameraUpdate = currentTick;
         }
 
@@ -177,6 +196,119 @@ public class LockOnSystem {
             targetingUpdateInterval = 3;
             cameraUpdateInterval = 1;
             cacheValidationDuration = 100;
+        }
+    }
+
+    /**
+     * Enhanced target validation with server sync checking
+     */
+    private static boolean isTargetStillValid(Entity target, LocalPlayer player) {
+        if (target == null || !target.isAlive()) {
+            return false;
+        }
+
+        // Check if entity still exists in the world (server sync)
+        if (target.isRemoved()) {
+            return false;
+        }
+
+        // Check if we can still see the entity (network sync)
+        // In single player, skip network checks
+        if (!Minecraft.getInstance().hasSingleplayerServer()) {
+            if (target.tickCount == 0 && target.getId() != -1) {
+                // Entity exists but hasn't been updated recently - possible desync
+                return false;
+            }
+        }
+
+        return isValidTargetCached(target, player);
+    }
+
+    /**
+     * Detect network lag that might cause desync
+     */
+    private static boolean isNetworkLagging(LocalPlayer player) {
+        // Check if we're in single player (no network lag possible)
+        if (Minecraft.getInstance().hasSingleplayerServer()) {
+            return false;
+        }
+
+        // Simple lag detection based on entity update frequency
+        if (targetEntity != null) {
+            long currentTime = System.currentTimeMillis();
+
+            // If entity hasn't been updated in a while, might be lag
+            if (currentTime - targetEntity.tickCount > 1000) { // 1 second
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Handle targeting during network lag
+     */
+    private static void handleLaggyTargeting(LocalPlayer player) {
+        lagTimeout++;
+
+        if (lagTimeout > MAX_LAG_TIMEOUT) {
+            // Been lagging too long, clear the target
+            clearTargetWithReason("Network timeout - clearing stale target");
+            return;
+        }
+
+        // Show a warning message to the player (but not too frequently)
+        if (lagTimeout == 20) { // After 1 second
+            showMessage(player, "§eNetwork lag detected - lock-on may be unstable");
+        }
+    }
+
+    /**
+     * Clear target with a reason for debugging
+     */
+    private static void clearTargetWithReason(String reason) {
+        if (targetEntity != null) {
+            LockOnMod.LOGGER.debug("Clearing target: {}", reason);
+            onTargetLost();
+        }
+        targetEntity = null;
+        potentialTargets.clear();
+        currentTargetIndex = -1;
+        wasLocked = false;
+        runtimeTargetingMode = null;
+        lagTimeout = 0; // Reset lag timeout
+        firstRotationFrame = true;
+        previousTargetPos = Vec3.ZERO;
+    }
+
+    /**
+     * Perform automatic sync check
+     */
+    private static void performAutomaticSyncCheck(LocalPlayer player) {
+        if (targetEntity == null) return;
+
+        // Check if target is still valid
+        if (!isTargetStillValid(targetEntity, player)) {
+            showMessage(player, "§6Auto-sync: Cleared invalid target");
+            clearTargetWithReason("Automatic sync check failed");
+        }
+    }
+
+    /**
+     * Force sync check for debugging
+     */
+    public static void forceSyncCheck() {
+        LocalPlayer player = Minecraft.getInstance().player;
+        if (player == null) return;
+
+        if (targetEntity != null && !isTargetStillValid(targetEntity, player)) {
+            clearTargetWithReason("Manual sync check failed");
+            showMessage(player, "§cDesync detected - cleared stale target");
+        } else if (targetEntity != null) {
+            showMessage(player, "§aTarget sync OK");
+        } else {
+            showMessage(player, "§7No target to check");
         }
     }
 
@@ -419,6 +551,15 @@ public class LockOnSystem {
         handleVisualControls(player);
 
         wasKeyHeld = lockKeyPressed;
+        if (LockOnKeybinds.toggleIndicatorKey.isDown() &&
+                LockOnKeybinds.cycleIndicatorTypeKey.isDown() &&
+                LockOnKeybinds.clearTargetKey.isDown()) {
+            // Triple key combo for manual sync check
+            forceSyncCheck();
+        }
+        if (LockOnKeybinds.forceSyncCheckKey.consumeClick()) {
+            forceSyncCheck();
+        }
     }
 
     /**
@@ -930,20 +1071,20 @@ public class LockOnSystem {
     }
 
     /**
-     * Optimized targeting state update
+     * Enhanced targeting state update with sync protection
      */
-    private static void updateTargetingOptimized(LocalPlayer player, long currentTick) {
+    private static void updateTargetingOptimizedWithSync(LocalPlayer player, long currentTick) {
         if (targetEntity == null) return;
 
-        // Quick validation check
-        if (!targetEntity.isAlive()) {
-            clearTarget();
+        // NEW: Enhanced validation with server sync checking
+        if (!isTargetStillValid(targetEntity, player)) {
+            clearTargetWithReason("Target no longer valid or desynced");
             return;
         }
 
-        // Use cached validation for performance
-        if (!isValidTargetCached(targetEntity, player)) {
-            clearTarget();
+        // NEW: Check for network lag indicators
+        if (isNetworkLagging(player)) {
+            handleLaggyTargeting(player);
             return;
         }
 
@@ -951,7 +1092,7 @@ public class LockOnSystem {
         boolean autoBreak = getConfigBoolean("autoBreakOnObstruction", true);
         if (currentTick % 5 == 0 && autoBreak) {
             if (!hasLineOfSightCached(player, targetEntity)) {
-                clearTarget();
+                clearTargetWithReason("Line of sight lost");
                 return;
             }
         }
@@ -962,10 +1103,13 @@ public class LockOnSystem {
             double maxRange = getMaxTargetingRangeAdjusted();
 
             if (distance > maxRange) {
-                clearTarget();
+                clearTargetWithReason("Target out of range");
                 return;
             }
         }
+
+        // Reset lag timeout if everything is fine
+        lagTimeout = 0;
     }
 
     /**
@@ -1287,7 +1431,6 @@ public class LockOnSystem {
         return entity.getDisplayName().getString();
     }
 
-    // 4. UPDATE your clearTarget method:
     /**
      * Clears the current target
      */
@@ -1304,15 +1447,23 @@ public class LockOnSystem {
                 LockOnMod.LOGGER.debug("Re-enabled Shoulder Surfing input after lock-on");
             }
         }
+
         targetEntity = null;
         potentialTargets.clear();
         currentTargetIndex = -1;
         wasLocked = false;
         runtimeTargetingMode = null;
         firstRotationFrame = true;
-
-        // Clear position tracking
         previousTargetPos = Vec3.ZERO;
+
+        // ADD THESE MISSING LINES FOR SYNC PROTECTION:
+        lagTimeout = 0; // Reset lag detection
+        wasNetworkLagging = false; // Reset network state
+
+        // Clear caches to prevent stale entity references
+        entityValidationCache.clear();
+        lineOfSightCache.clear();
+        entityPositionCache.clear();
     }
 
     /**

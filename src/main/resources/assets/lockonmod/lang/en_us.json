@@ -173,5 +173,15 @@
   "lockonmod.command.config_reloaded": "Lock-On Mod configuration reloaded",
   "lockonmod.command.target_cleared": "Target manually cleared",
   "lockonmod.command.debug_enabled": "Debug mode enabled",
-  "lockonmod.command.debug_disabled": "Debug mode disabled"
+  "lockonmod.command.debug_disabled": "Debug mode disabled",
+
+  "key.lockonmod.force_sync_check": "Force Sync Check (Debug)",
+
+  "_comment_sync_messages": "Sync Status Messages",
+  "lockonmod.message.sync_ok": "Target sync OK",
+  "lockonmod.message.sync_failed": "Desync detected - cleared stale target",
+  "lockonmod.message.network_lag": "Network lag detected - lock-on may be unstable",
+  "lockonmod.message.auto_sync_clear": "Auto-sync: Cleared invalid target",
+  "lockonmod.message.target_timeout": "Network timeout - clearing stale target",
+  "lockonmod.message.no_sync_target": "No target to check"
 }
