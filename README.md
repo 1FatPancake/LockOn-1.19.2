@@ -1,6 +1,6 @@
 # TargetLock Mod
 
-A comprehensive lock-on targeting system for Minecraft 1.19.2 with smooth camera control, intelligent target selection, and custom visual indicators.
+A comprehensive lock-on targeting system for Minecraft with smooth camera control, intelligent target selection, and custom visual indicators.
 
 ## 🎯 Features
 
