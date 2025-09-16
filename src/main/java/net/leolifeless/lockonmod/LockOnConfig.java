@@ -8,6 +8,7 @@ import net.minecraftforge.fml.event.config.ModConfigEvent;
 import org.apache.commons.lang3.tuple.Pair;
 
 import java.awt.*;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -449,115 +450,615 @@ public class LockOnConfig {
         METERS
     }
 
-    // === STATIC ACCESSORS ===
+    // === SAFE STATIC ACCESSORS WITH FALLBACKS ===
 
     // Targeting Settings
     public static double getMaxLockOnDistance() {
-        double baseDistance = CLIENT.maxLockOnDistance.get();
-        if (ThirdPersonCompatibility.isThirdPersonActive() && CLIENT.enableThirdPersonEnhancements.get()) {
-            return ThirdPersonCompatibility.getAdjustedTargetingRange(baseDistance);
+        try {
+            double baseDistance = CLIENT.maxLockOnDistance.get();
+            if (ThirdPersonCompatibility.isThirdPersonActive() && CLIENT.enableThirdPersonEnhancements.get()) {
+                return ThirdPersonCompatibility.getAdjustedTargetingRange(baseDistance);
+            }
+            return baseDistance;
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get max lock-on distance, using default: {}", e.getMessage());
+            return 50.0;
         }
-        return baseDistance;
     }
 
-    public static double getSearchRadius() { return CLIENT.searchRadius.get(); }
-    public static TargetingMode getTargetingMode() { return CLIENT.targetingMode.get(); }
-    public static boolean requireLineOfSight() { return CLIENT.requireLineOfSight.get(); }
-    public static boolean penetrateGlass() { return CLIENT.penetrateGlass.get(); }
+    public static double getSearchRadius() {
+        try {
+            return CLIENT.searchRadius.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get search radius, using default: {}", e.getMessage());
+            return 30.0;
+        }
+    }
+
+    public static TargetingMode getTargetingMode() {
+        try {
+            return CLIENT.targetingMode.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get targeting mode, using default: {}", e.getMessage());
+            return TargetingMode.CLOSEST;
+        }
+    }
+
+    public static boolean requireLineOfSight() {
+        try {
+            return CLIENT.requireLineOfSight.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get line of sight setting, using default: {}", e.getMessage());
+            return true;
+        }
+    }
+
+    public static boolean penetrateGlass() {
+        try {
+            return CLIENT.penetrateGlass.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get penetrate glass setting, using default: {}", e.getMessage());
+            return true;
+        }
+    }
 
     public static double getTargetingAngle() {
-        double baseAngle = CLIENT.targetingAngle.get();
-        if (ThirdPersonCompatibility.isThirdPersonActive() && CLIENT.enableThirdPersonEnhancements.get()) {
-            return ThirdPersonCompatibility.getAdjustedTargetingAngle(baseAngle);
+        try {
+            double baseAngle = CLIENT.targetingAngle.get();
+            if (ThirdPersonCompatibility.isThirdPersonActive() && CLIENT.enableThirdPersonEnhancements.get()) {
+                return ThirdPersonCompatibility.getAdjustedTargetingAngle(baseAngle);
+            }
+            return baseAngle;
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get targeting angle, using default: {}", e.getMessage());
+            return 45.0;
         }
-        return baseAngle;
     }
 
-    public static boolean isSmartTargetingEnabled() { return CLIENT.smartTargeting.get(); }
-    public static double getHealthPriorityWeight() { return CLIENT.healthPriorityWeight.get(); }
-    public static double getDistancePriorityWeight() { return CLIENT.distancePriorityWeight.get(); }
-    public static double getAnglePriorityWeight() { return CLIENT.anglePriorityWeight.get(); }
+    public static boolean isSmartTargetingEnabled() {
+        try {
+            return CLIENT.smartTargeting.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get smart targeting setting, using default: {}", e.getMessage());
+            return true;
+        }
+    }
+
+    public static double getHealthPriorityWeight() {
+        try {
+            return CLIENT.healthPriorityWeight.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get health priority weight, using default: {}", e.getMessage());
+            return 0.3;
+        }
+    }
+
+    public static double getDistancePriorityWeight() {
+        try {
+            return CLIENT.distancePriorityWeight.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get distance priority weight, using default: {}", e.getMessage());
+            return 0.4;
+        }
+    }
+
+    public static double getAnglePriorityWeight() {
+        try {
+            return CLIENT.anglePriorityWeight.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get angle priority weight, using default: {}", e.getMessage());
+            return 0.3;
+        }
+    }
 
     // Third Person Settings
-    public static boolean areThirdPersonEnhancementsEnabled() { return CLIENT.enableThirdPersonEnhancements.get(); }
-    public static double getThirdPersonRangeMultiplier() { return CLIENT.thirdPersonRangeMultiplier.get(); }
-    public static double getThirdPersonAngleMultiplier() { return CLIENT.thirdPersonAngleMultiplier.get(); }
-    public static double getThirdPersonSmoothingFactor() { return CLIENT.thirdPersonSmoothingFactor.get(); }
-    public static double getThirdPersonRotationSpeedMultiplier() { return CLIENT.thirdPersonRotationSpeedMultiplier.get(); }
-    public static double getThirdPersonIndicatorSizeMultiplier() { return CLIENT.thirdPersonIndicatorSizeMultiplier.get(); }
-    public static boolean shouldAdjustForCameraOffset() { return CLIENT.adjustForCameraOffset.get(); }
-    public static boolean isEnhancedThirdPersonSmoothingEnabled() { return CLIENT.enhancedThirdPersonSmoothing.get(); }
-    public static boolean isAutoDetectThirdPersonEnabled() { return CLIENT.autoDetectThirdPerson.get(); }
+    public static boolean areThirdPersonEnhancementsEnabled() {
+        try {
+            return CLIENT.enableThirdPersonEnhancements.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get third person enhancements setting, using default: {}", e.getMessage());
+            return true;
+        }
+    }
+
+    public static double getThirdPersonRangeMultiplier() {
+        try {
+            return CLIENT.thirdPersonRangeMultiplier.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get third person range multiplier, using default: {}", e.getMessage());
+            return 1.2;
+        }
+    }
+
+    public static double getThirdPersonAngleMultiplier() {
+        try {
+            return CLIENT.thirdPersonAngleMultiplier.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get third person angle multiplier, using default: {}", e.getMessage());
+            return 1.3;
+        }
+    }
+
+    public static double getThirdPersonSmoothingFactor() {
+        try {
+            return CLIENT.thirdPersonSmoothingFactor.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get third person smoothing factor, using default: {}", e.getMessage());
+            return 1.15;
+        }
+    }
+
+    public static double getThirdPersonRotationSpeedMultiplier() {
+        try {
+            return CLIENT.thirdPersonRotationSpeedMultiplier.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get third person rotation speed multiplier, using default: {}", e.getMessage());
+            return 0.85;
+        }
+    }
+
+    public static double getThirdPersonIndicatorSizeMultiplier() {
+        try {
+            return CLIENT.thirdPersonIndicatorSizeMultiplier.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get third person indicator size multiplier, using default: {}", e.getMessage());
+            return 1.0;
+        }
+    }
+
+    public static boolean shouldAdjustForCameraOffset() {
+        try {
+            return CLIENT.adjustForCameraOffset.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get camera offset adjustment setting, using default: {}", e.getMessage());
+            return true;
+        }
+    }
+
+    public static boolean isEnhancedThirdPersonSmoothingEnabled() {
+        try {
+            return CLIENT.enhancedThirdPersonSmoothing.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get enhanced third person smoothing setting, using default: {}", e.getMessage());
+            return true;
+        }
+    }
+
+    public static boolean isAutoDetectThirdPersonEnabled() {
+        try {
+            return CLIENT.autoDetectThirdPerson.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get auto detect third person setting, using default: {}", e.getMessage());
+            return true;
+        }
+    }
 
     // Camera Settings
-    public static float getRotationSpeed() { return CLIENT.rotationSpeed.get().floatValue(); }
-    public static float getMinRotationSpeed() { return CLIENT.minRotationSpeed.get().floatValue(); }
-    public static float getMaxRotationSpeed() { return CLIENT.maxRotationSpeed.get().floatValue(); }
-    public static boolean isSmoothCameraEnabled() { return CLIENT.smoothCameraEnabled.get(); }
-    public static float getCameraSmoothness() { return CLIENT.cameraSmoothness.get().floatValue(); }
-    public static boolean isAdaptiveRotationEnabled() { return CLIENT.adaptiveRotationEnabled.get(); }
-    public static boolean isPredictiveTargetingEnabled() { return CLIENT.predictiveTargeting.get(); }
-    public static boolean isAutoBreakOnObstructionEnabled() { return CLIENT.autoBreakOnObstruction.get(); }
+    public static float getRotationSpeed() {
+        try {
+            return CLIENT.rotationSpeed.get().floatValue();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get rotation speed, using default: {}", e.getMessage());
+            return 0.15f;
+        }
+    }
+
+    public static float getMinRotationSpeed() {
+        try {
+            return CLIENT.minRotationSpeed.get().floatValue();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get min rotation speed, using default: {}", e.getMessage());
+            return 0.05f;
+        }
+    }
+
+    public static float getMaxRotationSpeed() {
+        try {
+            return CLIENT.maxRotationSpeed.get().floatValue();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get max rotation speed, using default: {}", e.getMessage());
+            return 0.5f;
+        }
+    }
+
+    public static boolean isSmoothCameraEnabled() {
+        try {
+            return CLIENT.smoothCameraEnabled.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get smooth camera setting, using default: {}", e.getMessage());
+            return true;
+        }
+    }
+
+    public static float getCameraSmoothness() {
+        try {
+            return CLIENT.cameraSmoothness.get().floatValue();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get camera smoothness, using default: {}", e.getMessage());
+            return 0.1f;
+        }
+    }
+
+    public static boolean isAdaptiveRotationEnabled() {
+        try {
+            return CLIENT.adaptiveRotationEnabled.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get adaptive rotation setting, using default: {}", e.getMessage());
+            return true;
+        }
+    }
+
+    public static boolean isPredictiveTargetingEnabled() {
+        try {
+            return CLIENT.predictiveTargeting.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get predictive targeting setting, using default: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    public static boolean isAutoBreakOnObstructionEnabled() {
+        try {
+            return CLIENT.autoBreakOnObstruction.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get auto break setting, using default: {}", e.getMessage());
+            return true;
+        }
+    }
 
     // Visual Settings
-    public static IndicatorType getIndicatorType() { return CLIENT.indicatorType.get(); }
-    public static float getIndicatorSize() {
-        float baseSize = CLIENT.indicatorSize.get().floatValue();
-        if (ThirdPersonCompatibility.isThirdPersonActive() && CLIENT.enableThirdPersonEnhancements.get()) {
-            return ThirdPersonCompatibility.getAdjustedIndicatorSize(baseSize);
+    public static IndicatorType getIndicatorType() {
+        try {
+            return CLIENT.indicatorType.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get indicator type, using default: {}", e.getMessage());
+            return IndicatorType.CIRCLE;
         }
-        return baseSize;
     }
-    public static boolean isPulseEnabled() { return CLIENT.pulseEnabled.get(); }
-    public static boolean isGlowEnabled() { return CLIENT.glowEnabled.get(); }
-    public static boolean showTargetDistance() { return CLIENT.showTargetDistance.get(); }
-    public static boolean showTargetHealth() { return CLIENT.showTargetHealth.get(); }
-    public static boolean showTargetName() { return CLIENT.showTargetName.get(); }
+
+    public static float getIndicatorSize() {
+        try {
+            float baseSize = CLIENT.indicatorSize.get().floatValue();
+            if (ThirdPersonCompatibility.isThirdPersonActive() && CLIENT.enableThirdPersonEnhancements.get()) {
+                return ThirdPersonCompatibility.getAdjustedIndicatorSize(baseSize);
+            }
+            return baseSize;
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get indicator size, using default: {}", e.getMessage());
+            return 1.0f;
+        }
+    }
+
+    public static boolean isPulseEnabled() {
+        try {
+            return CLIENT.pulseEnabled.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get pulse enabled setting, using default: {}", e.getMessage());
+            return true;
+        }
+    }
+
+    public static boolean isGlowEnabled() {
+        try {
+            return CLIENT.glowEnabled.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get glow enabled setting, using default: {}", e.getMessage());
+            return true;
+        }
+    }
+
+    public static boolean showTargetDistance() {
+        try {
+            return CLIENT.showTargetDistance.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get show target distance setting, using default: {}", e.getMessage());
+            return true;
+        }
+    }
+
+    public static boolean showTargetHealth() {
+        try {
+            return CLIENT.showTargetHealth.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get show target health setting, using default: {}", e.getMessage());
+            return true;
+        }
+    }
+
+    public static boolean showTargetName() {
+        try {
+            return CLIENT.showTargetName.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get show target name setting, using default: {}", e.getMessage());
+            return true;
+        }
+    }
 
     // Legacy method compatibility
-    public static boolean showDistance() { return CLIENT.showDistance.get(); }
-    public static boolean showHealthBar() { return CLIENT.showHealthBar.get(); }
-    public static DistanceUnit getDistanceUnit() { return CLIENT.distanceUnit.get(); }
+    public static boolean showDistance() {
+        try {
+            return CLIENT.showDistance.get();
+        } catch (Exception e) {
+            return showTargetDistance(); // Fall back to new method
+        }
+    }
+
+    public static boolean showHealthBar() {
+        try {
+            return CLIENT.showHealthBar.get();
+        } catch (Exception e) {
+            return showTargetHealth(); // Fall back to new method
+        }
+    }
+
+    public static DistanceUnit getDistanceUnit() {
+        try {
+            return CLIENT.distanceUnit.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get distance unit, using default: {}", e.getMessage());
+            return DistanceUnit.BLOCKS;
+        }
+    }
 
     // Color Settings
-    public static Color getIndicatorColor() { return parseColor(CLIENT.indicatorColorHex.get(), Color.ORANGE); }
-    public static Color getOutlineColor() { return parseColor(CLIENT.outlineColorHex.get(), Color.WHITE); }
-    public static Color getTextColor() { return parseColor(CLIENT.textColorHex.get(), Color.WHITE); }
-    public static boolean isDynamicHealthColorEnabled() { return CLIENT.dynamicHealthColorEnabled.get(); }
-    public static boolean isDynamicDistanceColorEnabled() { return CLIENT.dynamicDistanceColorEnabled.get(); }
+    public static Color getIndicatorColor() {
+        try {
+            return parseColor(CLIENT.indicatorColorHex.get(), Color.ORANGE);
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get indicator color, using default: {}", e.getMessage());
+            return Color.ORANGE;
+        }
+    }
 
-    // Filter Settings
-    public static boolean canTargetPlayers() { return CLIENT.canTargetPlayers.get(); }
-    public static boolean canTargetHostileMobs() { return CLIENT.canTargetHostileMobs.get(); }
-    public static boolean canTargetPassiveMobs() { return CLIENT.canTargetPassiveMobs.get(); }
-    public static boolean canTargetBosses() { return CLIENT.canTargetBosses.get(); }
-    public static double getMinTargetHealth() { return CLIENT.minTargetHealth.get(); }
-    public static double getMaxTargetHealth() { return CLIENT.maxTargetHealth.get(); }
-    public static List<? extends String> getEntityBlacklist() { return CLIENT.entityBlacklist.get(); }
-    public static List<? extends String> getEntityWhitelist() { return CLIENT.entityWhitelist.get(); }
-    public static boolean useWhitelist() { return CLIENT.useWhitelist.get(); }
+    public static Color getOutlineColor() {
+        try {
+            return parseColor(CLIENT.outlineColorHex.get(), Color.WHITE);
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get outline color, using default: {}", e.getMessage());
+            return Color.WHITE;
+        }
+    }
+
+    public static Color getTextColor() {
+        try {
+            return parseColor(CLIENT.textColorHex.get(), Color.WHITE);
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get text color, using default: {}", e.getMessage());
+            return Color.WHITE;
+        }
+    }
+
+    public static boolean isDynamicHealthColorEnabled() {
+        try {
+            return CLIENT.dynamicHealthColorEnabled.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get dynamic health color setting, using default: {}", e.getMessage());
+            return true;
+        }
+    }
+
+    public static boolean isDynamicDistanceColorEnabled() {
+        try {
+            return CLIENT.dynamicDistanceColorEnabled.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get dynamic distance color setting, using default: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    // Filter Settings - FIXED VERSIONS
+    public static boolean canTargetPlayers() {
+        try {
+            return CLIENT.canTargetPlayers.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get target players setting, using default: {}", e.getMessage());
+            return true;
+        }
+    }
+
+    public static boolean canTargetHostileMobs() {
+        try {
+            return CLIENT.canTargetHostileMobs.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get target hostile mobs setting, using default: {}", e.getMessage());
+            return true;
+        }
+    }
+
+    public static boolean canTargetPassiveMobs() {
+        try {
+            return CLIENT.canTargetPassiveMobs.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get target passive mobs setting, using default: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    public static boolean canTargetBosses() {
+        try {
+            return CLIENT.canTargetBosses.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get target bosses setting, using default: {}", e.getMessage());
+            return true;
+        }
+    }
+
+    public static double getMinTargetHealth() {
+        try {
+            return CLIENT.minTargetHealth.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get min target health, using default: {}", e.getMessage());
+            return 1.0;
+        }
+    }
+
+    public static double getMaxTargetHealth() {
+        try {
+            return CLIENT.maxTargetHealth.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get max target health, using default: {}", e.getMessage());
+            return 0.0; // 0 = no limit
+        }
+    }
+
+    // FIXED BLACKLIST/WHITELIST METHODS
+    public static List<String> getEntityBlacklist() {
+        try {
+            List<? extends String> rawList = CLIENT.entityBlacklist.get();
+            if (rawList == null) {
+                return Arrays.asList("minecraft:villager", "minecraft:cat"); // Default fallback
+            }
+            return new ArrayList<>(rawList);
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get entity blacklist, using defaults: {}", e.getMessage());
+            return Arrays.asList("minecraft:villager", "minecraft:cat");
+        }
+    }
+
+    public static List<String> getEntityWhitelist() {
+        try {
+            List<? extends String> rawList = CLIENT.entityWhitelist.get();
+            if (rawList == null) {
+                return new ArrayList<>(); // Empty whitelist by default
+            }
+            return new ArrayList<>(rawList);
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get entity whitelist, using empty list: {}", e.getMessage());
+            return new ArrayList<>();
+        }
+    }
+
+    public static boolean useWhitelist() {
+        try {
+            return CLIENT.useWhitelist.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get whitelist setting, defaulting to false: {}", e.getMessage());
+            return false;
+        }
+    }
 
     // Audio Settings
-    public static boolean areSoundsEnabled() { return CLIENT.enableSounds.get(); }
-    public static float getSoundVolume() { return CLIENT.soundVolume.get().floatValue(); }
-    public static boolean playLockOnSound() { return CLIENT.lockOnSound.get(); }
-    public static boolean playTargetSwitchSound() { return CLIENT.targetSwitchSound.get(); }
-    public static boolean playTargetLostSound() { return CLIENT.targetLostSound.get(); }
+    public static boolean areSoundsEnabled() {
+        try {
+            return CLIENT.enableSounds.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get sounds enabled setting, using default: {}", e.getMessage());
+            return true;
+        }
+    }
+
+    public static float getSoundVolume() {
+        try {
+            return CLIENT.soundVolume.get().floatValue();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get sound volume, using default: {}", e.getMessage());
+            return 1.0f;
+        }
+    }
+
+    public static boolean playLockOnSound() {
+        try {
+            return CLIENT.lockOnSound.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get lock on sound setting, using default: {}", e.getMessage());
+            return true;
+        }
+    }
+
+    public static boolean playTargetSwitchSound() {
+        try {
+            return CLIENT.targetSwitchSound.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get target switch sound setting, using default: {}", e.getMessage());
+            return true;
+        }
+    }
+
+    public static boolean playTargetLostSound() {
+        try {
+            return CLIENT.targetLostSound.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get target lost sound setting, using default: {}", e.getMessage());
+            return true;
+        }
+    }
 
     // Keybinding Settings
-    public static boolean holdToMaintainLock() { return CLIENT.holdToMaintainLock.get(); }
-    public static boolean isToggleMode() { return CLIENT.toggleMode.get(); }
-    public static boolean canCycleThroughTargets() { return CLIENT.cycleThroughTargets.get(); }
-    public static boolean reverseScrollCycling() { return CLIENT.reverseScrollCycling.get(); }
+    public static boolean holdToMaintainLock() {
+        try {
+            return CLIENT.holdToMaintainLock.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get hold to maintain lock setting, using default: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    public static boolean isToggleMode() {
+        try {
+            return CLIENT.toggleMode.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get toggle mode setting, using default: {}", e.getMessage());
+            return true;
+        }
+    }
+
+    public static boolean canCycleThroughTargets() {
+        try {
+            return CLIENT.cycleThroughTargets.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get cycle through targets setting, using default: {}", e.getMessage());
+            return true;
+        }
+    }
+
+    public static boolean reverseScrollCycling() {
+        try {
+            return CLIENT.reverseScrollCycling.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get reverse scroll cycling setting, using default: {}", e.getMessage());
+            return false;
+        }
+    }
 
     // Performance Settings
-    public static int getUpdateFrequency() { return CLIENT.updateFrequency.get(); }
-    public static int getMaxTargetsToSearch() { return CLIENT.maxTargetsToSearch.get(); }
-    public static boolean disableInCreative() { return CLIENT.disableInCreative.get(); }
-    public static boolean disableInSpectator() { return CLIENT.disableInSpectator.get(); }
+    public static int getUpdateFrequency() {
+        try {
+            return CLIENT.updateFrequency.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get update frequency, using default: {}", e.getMessage());
+            return 1;
+        }
+    }
+
+    public static int getMaxTargetsToSearch() {
+        try {
+            return CLIENT.maxTargetsToSearch.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get max targets to search, using default: {}", e.getMessage());
+            return 50;
+        }
+    }
+
+    public static boolean disableInCreative() {
+        try {
+            return CLIENT.disableInCreative.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get disable in creative setting, using default: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    public static boolean disableInSpectator() {
+        try {
+            return CLIENT.disableInSpectator.get();
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get disable in spectator setting, using default: {}", e.getMessage());
+            return true;
+        }
+    }
 
     /**
-     * Parse color from hex string
+     * Parse color from hex string with safe error handling
      */
     private static Color parseColor(String hex, Color fallback) {
         try {
@@ -579,12 +1080,20 @@ public class LockOnConfig {
     @SubscribeEvent
     public static void onLoad(final ModConfigEvent.Loading configEvent) {
         LockOnMod.LOGGER.debug("Loaded Enhanced Target Lock Mod config file {}", configEvent.getConfig().getFileName());
-        LockOnMod.LOGGER.info("Third Person Compatibility Status: {}", ThirdPersonCompatibility.getCompatibilityStatus());
+        try {
+            LockOnMod.LOGGER.info("Third Person Compatibility Status: {}", ThirdPersonCompatibility.getCompatibilityStatus());
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get third person compatibility status: {}", e.getMessage());
+        }
     }
 
     @SubscribeEvent
     public static void onReload(final ModConfigEvent.Reloading configEvent) {
         LockOnMod.LOGGER.debug("Enhanced Target Lock Mod config reloaded");
-        LockOnMod.LOGGER.info("Third Person Compatibility Status: {}", ThirdPersonCompatibility.getCompatibilityStatus());
+        try {
+            LockOnMod.LOGGER.info("Third Person Compatibility Status: {}", ThirdPersonCompatibility.getCompatibilityStatus());
+        } catch (Exception e) {
+            LockOnMod.LOGGER.warn("Failed to get third person compatibility status on reload: {}", e.getMessage());
+        }
     }
 }

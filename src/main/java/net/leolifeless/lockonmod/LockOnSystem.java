@@ -31,20 +31,40 @@ import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Mod.EventBusSubscriber(modid = LockOnMod.MOD_ID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public class LockOnSystem {
+
+    // === PERFORMANCE OPTIMIZATION CACHES ===
+    private static final Map<Entity, Long> entityValidationCache = new HashMap<>();
+    private static final Map<Entity, Boolean> lineOfSightCache = new HashMap<>();
+    private static final Map<Entity, Vec3> entityPositionCache = new HashMap<>();
+
     private static Entity targetEntity = null;
     private static List<Entity> potentialTargets = new ArrayList<>();
-    private static int currentTargetIndex = -1;
+    private static int currentTargetIndex = 0;
     private static boolean wasKeyHeld = false;
     private static boolean indicatorVisible = true;
     private static boolean wasLocked = false;
     private static LockOnConfig.TargetingMode runtimeTargetingMode = null;
+    // === TIMING CONTROLS ===
+    private static long lastTargetingUpdate = 0;
+    private static long lastCacheCleanup = 0;
+    // === ADAPTIVE PERFORMANCE VARIABLES ===
+    private static int targetingUpdateInterval = 3; // Dynamic based on config
+    private static long cacheValidationDuration = 100;
+    // === SYNC PROTECTION STATE ===
+    private static int lagTimeout = 0;
+    private static final int MAX_LAG_TIMEOUT = 100; // 5 seconds at 20 TPS
+    private static int syncCheckCounter = 0;
+    private static boolean wasNetworkLagging = false;
+
+    private static int tickCounter = 0;
+
+    private static float prevYaw = 0F;
+    private static float prevPitch = 0F;
 
     // Enhanced for third person compatibility
     private static Vec3 lastCameraOffset = Vec3.ZERO;
@@ -98,23 +118,28 @@ public class LockOnSystem {
         LocalPlayer player = mc.player;
         if (player == null) return;
 
-        // Performance optimization - only update every few ticks based on config
+        long currentTick = mc.level.getGameTime();
         long currentTime = System.currentTimeMillis();
-        if (currentTime - lastUpdateTime < (LockOnConfig.getUpdateFrequency() * 50)) {
-            return;
-        }
-        lastUpdateTime = currentTime;
 
-        // Check for third person state changes
-        boolean currentThirdPersonState = ThirdPersonCompatibility.isThirdPersonActive();
-        if (currentThirdPersonState != lastThirdPersonState) {
-            onThirdPersonStateChanged(currentThirdPersonState);
-            lastThirdPersonState = currentThirdPersonState;
+        // Automatic sync checking every 3 seconds
+        syncCheckCounter++;
+        if (syncCheckCounter >= 60) {
+            syncCheckCounter = 0;
+            performAutomaticSyncCheck(player);
         }
 
-        // Update camera offset tracking
-        if (currentThirdPersonState) {
-            lastCameraOffset = ThirdPersonCompatibility.getThirdPersonCameraOffset();
+        // Check for third person state changes (less frequently for performance)
+        if (currentTime - lastUpdateTime > 500) {
+            boolean currentThirdPersonState = ThirdPersonCompatibility.isThirdPersonActive();
+            if (currentThirdPersonState != lastThirdPersonState) {
+                onThirdPersonStateChanged(currentThirdPersonState);
+                lastThirdPersonState = currentThirdPersonState;
+            }
+
+            if (currentThirdPersonState) {
+                lastCameraOffset = ThirdPersonCompatibility.getThirdPersonCameraOffset();
+            }
+            lastUpdateTime = currentTime;
         }
 
         // Check if lock-on should be disabled for current game mode
@@ -123,9 +148,23 @@ public class LockOnSystem {
             return;
         }
 
+        // Handle input every tick for responsiveness
         handleInput(player);
-        updateTargeting(player);
-        updateCameraRotation(player);
+
+        // Separate update intervals for different operations
+        if (currentTick - lastTargetingUpdate >= targetingUpdateInterval) {
+            updateTargetingOptimizedWithSync(player, currentTick);
+            lastTargetingUpdate = currentTick;
+        } else {
+            // Still update camera rotation every tick for smoothness
+            updateCameraRotation(player);
+        }
+
+        // Clean cache periodically (every 5 seconds)
+        if (currentTime - lastCacheCleanup > 5000) {
+            cleanCaches();
+            lastCacheCleanup = currentTime;
+        }
     }
 
     /**
@@ -217,7 +256,7 @@ public class LockOnSystem {
      * Enhanced targeting with third person compatibility
      */
     private static void findAndLockTarget(LocalPlayer player) {
-        List<Entity> targets = findValidTargets(player);
+        List<Entity> targets = findValidTargetsOptimized(player); // Use optimized version
 
         if (targets.isEmpty()) {
             showMessage(player, "No Valid Targets Found");
@@ -310,6 +349,9 @@ public class LockOnSystem {
                 .limit(LockOnConfig.getMaxTargetsToSearch())
                 .collect(Collectors.toList());
     }
+
+
+
 
     /**
      * Enhanced angle checking with third person adjustments
@@ -496,7 +538,7 @@ public class LockOnSystem {
     }
 
     /**
-     * Enhanced camera rotation with third person smoothing
+     * Calculate smart targeting score (lower is better)
      */
     private static void updateCameraRotation(LocalPlayer player) {
         if (targetEntity == null || !targetEntity.isAlive()) {
@@ -532,6 +574,8 @@ public class LockOnSystem {
 
         // Calculate look direction
         Vec3 direction = targetPos.subtract(playerEyePos).normalize();
+
+        // Calculate target yaw and pitch
         float targetYaw = (float) (Math.atan2(-direction.x, direction.z) * 180.0 / Math.PI);
         float targetPitch = (float) (Math.asin(-direction.y) * 180.0 / Math.PI);
 
@@ -547,16 +591,22 @@ public class LockOnSystem {
             smoothingFactor = ThirdPersonCompatibility.getThirdPersonSmoothingFactor(smoothingFactor);
         }
 
-        // Apply smooth rotation
+        // ✅ IMPROVED: Apply smooth interpolation using previous values
         float currentYaw = player.getYRot();
         float currentPitch = player.getXRot();
 
+        // Interpolate towards target rotation
         float newYaw = interpolateRotation(currentYaw, targetYaw, smoothingFactor);
         float newPitch = interpolateRotation(currentPitch, targetPitch, smoothingFactor);
+
+        // Store values for next frame (smooth interpolation)
+        prevYaw = newYaw;
+        prevPitch = newPitch;
 
         // Clamp pitch to reasonable values
         newPitch = Math.max(-90.0f, Math.min(90.0f, newPitch));
 
+        // Apply rotation
         player.setYRot(newYaw);
         player.setXRot(newPitch);
     }
@@ -789,6 +839,11 @@ public class LockOnSystem {
     private static void setTarget(Entity target) {
         targetEntity = target;
         wasLocked = true;
+
+        // Clear caches for new target
+        entityValidationCache.clear();
+        lineOfSightCache.clear();
+        entityPositionCache.clear();
     }
 
     /**
@@ -839,6 +894,267 @@ public class LockOnSystem {
     }
 
     /**
+     * Cached entity validation for better performance
+     */
+    private static boolean isValidTargetCached(Entity entity, LocalPlayer player) {
+        long currentTime = System.currentTimeMillis();
+        Long lastValidation = entityValidationCache.get(entity);
+
+        if (lastValidation == null || currentTime - lastValidation > cacheValidationDuration) {
+            boolean isValid = isValidTarget(entity, player); // Use your existing method
+            entityValidationCache.put(entity, currentTime);
+            return isValid;
+        }
+
+        return true; // Assume valid if recently cached
+    }
+
+    /**
+     * Cached line of sight checking for better performance
+     */
+    private static boolean hasLineOfSightCached(LocalPlayer player, Entity target) {
+        if (!LockOnConfig.requireLineOfSight()) return true;
+
+        // Use cached result if available and entity hasn't moved much
+        Boolean cachedResult = lineOfSightCache.get(target);
+        Vec3 lastPos = entityPositionCache.get(target);
+        Vec3 currentPos = target.position();
+
+        if (cachedResult != null && lastPos != null && lastPos.distanceTo(currentPos) < 0.5) {
+            return cachedResult;
+        }
+
+        // Perform actual line of sight check using your existing method
+        boolean hasLOS = hasLineOfSight(player, target);
+        lineOfSightCache.put(target, hasLOS);
+        entityPositionCache.put(target, currentPos);
+
+        return hasLOS;
+    }
+
+    /**
+     * Enhanced target validation with server sync checking
+     */
+    private static boolean isTargetStillValid(Entity target, LocalPlayer player) {
+        if (target == null || !target.isAlive()) {
+            return false;
+        }
+
+        // Check if entity still exists in the world (server sync)
+        if (target.isRemoved()) {
+            return false;
+        }
+
+        // Check if we can still see the entity (network sync)
+        // In single player, skip network checks
+        if (!Minecraft.getInstance().hasSingleplayerServer()) {
+            if (target.tickCount == 0 && target.getId() != -1) {
+                // Entity exists but hasn't been updated recently - possible desync
+                return false;
+            }
+        }
+
+        return isValidTargetCached(target, player);
+    }
+
+    /**
+     * Detect network lag that might cause desync
+     */
+    private static boolean isNetworkLagging(LocalPlayer player) {
+        // Check if we're in single player (no network lag possible)
+        if (Minecraft.getInstance().hasSingleplayerServer()) {
+            return false;
+        }
+
+        // Simple lag detection based on entity update frequency
+        if (targetEntity != null) {
+            long currentTime = System.currentTimeMillis();
+
+            // If entity hasn't been updated in a while, might be lag
+            if (currentTime - targetEntity.tickCount > 1000) { // 1 second
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Handle targeting during network lag
+     */
+    private static void handleLaggyTargeting(LocalPlayer player) {
+        lagTimeout++;
+
+        if (lagTimeout > MAX_LAG_TIMEOUT) {
+            // Been lagging too long, clear the target
+            clearTargetWithReason("Network timeout - clearing stale target");
+            return;
+        }
+
+        // Show a warning message to the player (but not too frequently)
+        if (lagTimeout == 20) { // After 1 second
+            showMessage(player, "§eNetwork lag detected - lock-on may be unstable");
+        }
+    }
+
+    /**
+     * Clear target with a reason for debugging
+     */
+    private static void clearTargetWithReason(String reason) {
+        if (targetEntity != null) {
+            LockOnMod.LOGGER.debug("Clearing target: {}", reason);
+            onTargetLost();
+        }
+        targetEntity = null;
+        potentialTargets.clear();
+        currentTargetIndex = -1;
+        wasLocked = false;
+        runtimeTargetingMode = null;
+        lagTimeout = 0; // Reset lag timeout
+
+        // Clear caches to prevent stale entity references
+        entityValidationCache.clear();
+        lineOfSightCache.clear();
+        entityPositionCache.clear();
+    }
+
+    /**
+     * Perform automatic sync check
+     */
+    private static void performAutomaticSyncCheck(LocalPlayer player) {
+        if (targetEntity == null) return;
+
+        // Check if target is still valid
+        if (!isTargetStillValid(targetEntity, player)) {
+            showMessage(player, "§6Auto-sync: Cleared invalid target");
+            clearTargetWithReason("Automatic sync check failed");
+        }
+    }
+
+    /**
+     * Clean old cache entries for performance
+     */
+    private static void cleanCaches() {
+        long currentTime = System.currentTimeMillis();
+
+        // Clean entity validation cache
+        entityValidationCache.entrySet().removeIf(entry ->
+                currentTime - entry.getValue() > cacheValidationDuration * 10);
+
+        // Clean line of sight cache (remove dead entities)
+        lineOfSightCache.entrySet().removeIf(entry ->
+                entry.getKey() == null || !entry.getKey().isAlive());
+
+        // Clean position cache (remove dead entities)
+        entityPositionCache.entrySet().removeIf(entry ->
+                entry.getKey() == null || !entry.getKey().isAlive());
+
+        LockOnMod.LOGGER.debug("Cleaned targeting caches - validation: {}, LOS: {}, position: {}",
+                entityValidationCache.size(), lineOfSightCache.size(), entityPositionCache.size());
+    }
+
+    /**
+     * Enhanced targeting state update with sync protection
+     */
+    private static void updateTargetingOptimizedWithSync(LocalPlayer player, long currentTick) {
+        if (targetEntity == null) return;
+
+        // Enhanced validation with server sync checking
+        if (!isTargetStillValid(targetEntity, player)) {
+            clearTargetWithReason("Target no longer valid or desynced");
+            return;
+        }
+
+        // Check for network lag indicators
+        if (isNetworkLagging(player)) {
+            handleLaggyTargeting(player);
+            return;
+        }
+
+        // Auto-break on obstruction (check less frequently)
+        if (currentTick % 5 == 0 && LockOnConfig.isAutoBreakOnObstructionEnabled()) {
+            if (!hasLineOfSightCached(player, targetEntity)) {
+                clearTargetWithReason("Line of sight lost");
+                return;
+            }
+        }
+
+        // Check distance (check less frequently for performance)
+        if (currentTick % 10 == 0) {
+            double distance = (double) player.distanceTo(targetEntity);
+            double maxRange = LockOnConfig.getMaxLockOnDistance();
+
+            if (ThirdPersonCompatibility.isThirdPersonActive()) {
+                maxRange = ThirdPersonCompatibility.getAdjustedTargetingRange(maxRange);
+            }
+
+            if (distance > maxRange) {
+                clearTargetWithReason("Target out of range");
+                return;
+            }
+        }
+
+        // Reset lag timeout if everything is fine
+        lagTimeout = 0;
+    }
+
+    /**
+     * Optimized target finding with enhanced caching (Fixed for lambda)
+     */
+    private static List<Entity> findValidTargetsOptimized(LocalPlayer player) {
+        // Calculate range with third person adjustments
+        double baseRange = LockOnConfig.getMaxLockOnDistance();
+        final double range;
+        final double searchRadius;
+
+        if (ThirdPersonCompatibility.isThirdPersonActive()) {
+            range = ThirdPersonCompatibility.getAdjustedTargetingRange(baseRange);
+            searchRadius = Math.min(range * 1.2, ThirdPersonCompatibility.getAdjustedTargetingRange(LockOnConfig.getSearchRadius()));
+        } else {
+            range = baseRange;
+            searchRadius = Math.min(range * 1.2, LockOnConfig.getSearchRadius());
+        }
+
+        AABB searchBox = player.getBoundingBox().inflate(searchRadius);
+        List<Entity> nearbyEntities = player.level.getEntities(player, searchBox);
+
+        return nearbyEntities.stream()
+                .filter(entity -> entity instanceof LivingEntity)
+                .filter(entity -> entity != player)
+                .filter(entity -> (double) entity.distanceTo(player) <= range) // Now range is final
+                .filter(entity -> isValidTargetCached(entity, player))
+                .filter(entity -> hasLineOfSightCached(player, entity))
+                .filter(entity -> isWithinTargetingAngle(player, entity))
+                .limit(LockOnConfig.getMaxTargetsToSearch())
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Force sync check for debugging
+     */
+    public static void forceSyncCheck() {
+        LocalPlayer player = Minecraft.getInstance().player;
+        if (player == null) return;
+
+        if (targetEntity != null && !isTargetStillValid(targetEntity, player)) {
+            clearTargetWithReason("Manual sync check failed");
+            showMessage(player, "§cDesync detected - cleared stale target");
+        } else if (targetEntity != null) {
+            showMessage(player, "§aTarget sync OK");
+        } else {
+            showMessage(player, "§7No target to check");
+        }
+    }
+
+    /**
+     * Get performance statistics
+     */
+    public static String getPerformanceStats() {
+        return String.format("Performance Stats - Cache Duration: %dms, Active Caches: %d entities, Lag Timeout: %d",
+                cacheValidationDuration, entityValidationCache.size(), lagTimeout);
+    }
+
+    /**
      * Gets display name for an entity
      */
     private static String getEntityDisplayName(Entity entity) {
@@ -857,6 +1173,12 @@ public class LockOnSystem {
         currentTargetIndex = -1;
         wasLocked = false;
         runtimeTargetingMode = null;
+        lagTimeout = 0; // Reset lag detection
+
+        // Clear caches to prevent stale entity references
+        entityValidationCache.clear();
+        lineOfSightCache.clear();
+        entityPositionCache.clear();
     }
 
     /**

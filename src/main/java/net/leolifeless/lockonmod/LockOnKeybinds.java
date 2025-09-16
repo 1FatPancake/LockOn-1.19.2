@@ -33,6 +33,9 @@ public class LockOnKeybinds {
     public static final String KEY_TOGGLE_INDICATOR = "key." + LockOnMod.MOD_ID + ".toggle_indicator";
     public static final String KEY_CYCLE_INDICATOR_TYPE = "key." + LockOnMod.MOD_ID + ".cycle_indicator_type";
 
+    // Debug/sync keybind (ADDED - this was missing)
+    public static final String KEY_FORCE_SYNC_CHECK = "key." + LockOnMod.MOD_ID + ".force_sync_check";
+
     // KeyMapping instances
     public static KeyMapping lockOnKey;
     public static KeyMapping cycleTargetKey;
@@ -49,6 +52,9 @@ public class LockOnKeybinds {
 
     public static KeyMapping toggleIndicatorKey;
     public static KeyMapping cycleIndicatorTypeKey;
+
+    // ADDED - Missing force sync check key
+    public static KeyMapping forceSyncCheckKey;
 
     public static void init() {
         // Main controls
@@ -162,6 +168,16 @@ public class LockOnKeybinds {
                 GLFW.GLFW_KEY_V,
                 KEY_CATEGORY_LOCKON
         );
+
+        // ADDED - Force sync check keybind (for debugging desync issues)
+        forceSyncCheckKey = new KeyMapping(
+                KEY_FORCE_SYNC_CHECK,
+                KeyConflictContext.IN_GAME,
+                KeyModifier.CONTROL,
+                InputConstants.Type.KEYSYM,
+                GLFW.GLFW_KEY_F9, // Using F9 key for debug function
+                KEY_CATEGORY_LOCKON
+        );
     }
 
     public static void register(RegisterKeyMappingsEvent event) {
@@ -184,5 +200,8 @@ public class LockOnKeybinds {
         // Register visual controls
         event.register(toggleIndicatorKey);
         event.register(cycleIndicatorTypeKey);
+
+        // ADDED - Register force sync check key
+        event.register(forceSyncCheckKey);
     }
 }

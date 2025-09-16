@@ -23,6 +23,8 @@
   "key.lockonmod.toggle_indicator": "Toggle Lock-On Indicator",
   "key.lockonmod.cycle_indicator_type": "Cycle Indicator Type",
 
+  "key.lockonmod.force_sync_check": "Force Sync Check",
+
   "_comment_messages": "Status Messages",
   "lockonmod.message.target_locked": "Target Locked: %s",
   "lockonmod.message.target_lost": "Target Lost",
