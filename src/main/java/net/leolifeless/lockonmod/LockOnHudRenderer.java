@@ -7,11 +7,9 @@ import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.renderer.BufferBuilder;
 import net.minecraft.client.renderer.Tessellator;
-import net.minecraft.client.renderer.WorldVertexBufferUploader;
 import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.LivingEntity;
-import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.vector.Matrix4f;
 import net.minecraftforge.client.event.RenderGameOverlayEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -21,18 +19,8 @@ import org.lwjgl.opengl.GL11;
 @Mod.EventBusSubscriber(modid = LockOnMod.MOD_ID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public class LockOnHudRenderer {
 
-    // Built-in crosshair textures (add these to your textures/gui/ folder)
-    private static final ResourceLocation CROSSHAIR_CIRCLE = new ResourceLocation(LockOnMod.MOD_ID, "textures/gui/circle.png");
-    private static final ResourceLocation CROSSHAIR_SQUARE = new ResourceLocation(LockOnMod.MOD_ID, "textures/gui/square.png");
-    private static final ResourceLocation CROSSHAIR_DIAMOND = new ResourceLocation(LockOnMod.MOD_ID, "textures/gui/diamond.png");
-    private static final ResourceLocation CROSSHAIR_CROSS = new ResourceLocation(LockOnMod.MOD_ID, "textures/gui/cross.png");
-
-    private static final ResourceLocation[] BUILT_IN_CROSSHAIRS = {
-            CROSSHAIR_CIRCLE, CROSSHAIR_SQUARE, CROSSHAIR_DIAMOND, CROSSHAIR_CROSS
-    };
-
     private static int currentCrosshairIndex = 0;
-    private static boolean useCustomIndicators = false; // Toggle between crosshairs and custom indicators
+    private static final String[] CROSSHAIR_NAMES = {"Cross", "Circle", "Optimized Circle", "Square", "Diamond", "Brackets"};
 
     @SubscribeEvent
     public static void onRenderGameOverlay(RenderGameOverlayEvent.Post event) {
@@ -156,124 +144,232 @@ public class LockOnHudRenderer {
         // Cancel default crosshair
         event.setCanceled(true);
 
-        // Render custom textured crosshair
-        renderTexturedCrosshair(matrixStack, screenWidth / 2, screenHeight / 2);
+        // Render custom crosshair
+        renderLightweightCrosshair(matrixStack, screenWidth / 2, screenHeight / 2);
     }
 
     /**
-     * Render crosshair using texture (either built-in crosshairs or custom indicators)
+     * Render crosshair using lightweight methods optimized for 1.16.5
      */
-    private static void renderTexturedCrosshair(MatrixStack matrixStack, int centerX, int centerY) {
-        Minecraft minecraft = Minecraft.getInstance();
+    private static void renderLightweightCrosshair(MatrixStack matrixStack, int centerX, int centerY) {
+        int size = 8;      // Reduced size for cleaner look
+        int thickness = 1;  // Thinner lines
 
-        // Set up rendering state
-        RenderSystem.pushMatrix();
+        // Colors - using proper ARGB format for 1.16.5
+        int whiteColor = 0xFFFFFFFF;
+        int blackColor = 0xFF000000;
+
+        switch (currentCrosshairIndex) {
+            case 0: // Cross
+                renderCleanCross(matrixStack, centerX, centerY, size, thickness, whiteColor, blackColor);
+                break;
+            case 1: // Circle (clean approximated)
+                renderCleanCircle(matrixStack, centerX, centerY, size, whiteColor, blackColor);
+                break;
+            case 2: // Optimized Tessellator Circle
+                renderTessellatorCircle(matrixStack, centerX, centerY, size, thickness);
+                break;
+            case 3: // Square
+                renderCleanSquare(matrixStack, centerX, centerY, size, whiteColor, blackColor);
+                break;
+            case 4: // Diamond
+                renderCleanDiamond(matrixStack, centerX, centerY, size, whiteColor, blackColor);
+                break;
+            case 5: // Brackets
+                renderCleanBrackets(matrixStack, centerX, centerY, size, whiteColor, blackColor);
+                break;
+        }
+    }
+
+    private static void renderCleanCross(MatrixStack matrixStack, int centerX, int centerY, int size, int thickness, int whiteColor, int blackColor) {
+        // Thin, clean cross with minimal outline
+        // Horizontal line
+        Screen.fill(matrixStack, centerX - size - 1, centerY - 1, centerX + size + 1, centerY + 1, blackColor);
+        Screen.fill(matrixStack, centerX - size, centerY, centerX + size, centerY, whiteColor);
+
+        // Vertical line
+        Screen.fill(matrixStack, centerX - 1, centerY - size - 1, centerX + 1, centerY + size + 1, blackColor);
+        Screen.fill(matrixStack, centerX, centerY - size, centerX, centerY + size, whiteColor);
+
+        // Center dot for precision
+        Screen.fill(matrixStack, centerX, centerY, centerX + 1, centerY + 1, whiteColor);
+    }
+
+    private static void renderCleanCircle(MatrixStack matrixStack, int centerX, int centerY, int size, int whiteColor, int blackColor) {
+        // Clean circle using 8 small segments positioned precisely
+        int radius = size;
+
+        // Cardinal directions (4 main points)
+        Screen.fill(matrixStack, centerX - 1, centerY - radius, centerX + 1, centerY - radius + 2, whiteColor); // Top
+        Screen.fill(matrixStack, centerX - 1, centerY + radius - 2, centerX + 1, centerY + radius, whiteColor);     // Bottom
+        Screen.fill(matrixStack, centerX - radius, centerY - 1, centerX - radius + 2, centerY + 1, whiteColor);     // Left
+        Screen.fill(matrixStack, centerX + radius - 2, centerY - 1, centerX + radius, centerY + 1, whiteColor);     // Right
+
+        // Diagonal points (4 corner approximations) - positioned more precisely
+        int diagOffset = (int)(radius * 0.707); // cos(45°) for proper circle approximation
+
+        Screen.fill(matrixStack, centerX - diagOffset - 1, centerY - diagOffset, centerX - diagOffset + 1, centerY - diagOffset + 1, whiteColor); // Top-left
+        Screen.fill(matrixStack, centerX + diagOffset - 1, centerY - diagOffset, centerX + diagOffset + 1, centerY - diagOffset + 1, whiteColor); // Top-right
+        Screen.fill(matrixStack, centerX - diagOffset - 1, centerY + diagOffset, centerX - diagOffset + 1, centerY + diagOffset + 1, whiteColor); // Bottom-left
+        Screen.fill(matrixStack, centerX + diagOffset - 1, centerY + diagOffset, centerX + diagOffset + 1, centerY + diagOffset + 1, whiteColor); // Bottom-right
+
+        // Center dot
+        Screen.fill(matrixStack, centerX, centerY, centerX + 1, centerY + 1, whiteColor);
+    }
+
+    private static void renderCleanSquare(MatrixStack matrixStack, int centerX, int centerY, int size, int whiteColor, int blackColor) {
+        // Clean, thin square outline
+        int halfSize = size;
+
+        // Top edge
+        Screen.fill(matrixStack, centerX - halfSize, centerY - halfSize, centerX + halfSize, centerY - halfSize + 1, whiteColor);
+        // Bottom edge
+        Screen.fill(matrixStack, centerX - halfSize, centerY + halfSize - 1, centerX + halfSize, centerY + halfSize, whiteColor);
+        // Left edge
+        Screen.fill(matrixStack, centerX - halfSize, centerY - halfSize, centerX - halfSize + 1, centerY + halfSize, whiteColor);
+        // Right edge
+        Screen.fill(matrixStack, centerX + halfSize - 1, centerY - halfSize, centerX + halfSize, centerY + halfSize, whiteColor);
+
+        // Center dot
+        Screen.fill(matrixStack, centerX, centerY, centerX + 1, centerY + 1, whiteColor);
+    }
+
+    private static void renderCleanDiamond(MatrixStack matrixStack, int centerX, int centerY, int size, int whiteColor, int blackColor) {
+        // Clean diamond using precise lines
+        int radius = size;
+
+        // Draw diamond outline using 4 lines
+        // Top-left to top-right
+        for (int i = 0; i < radius; i++) {
+            Screen.fill(matrixStack, centerX - i, centerY - radius + i, centerX - i + 1, centerY - radius + i + 1, whiteColor);
+            Screen.fill(matrixStack, centerX + i, centerY - radius + i, centerX + i + 1, centerY - radius + i + 1, whiteColor);
+        }
+
+        // Bottom-left to bottom-right
+        for (int i = 0; i < radius; i++) {
+            Screen.fill(matrixStack, centerX - radius + i, centerY + i, centerX - radius + i + 1, centerY + i + 1, whiteColor);
+            Screen.fill(matrixStack, centerX + radius - i, centerY + i, centerX + radius - i + 1, centerY + i + 1, whiteColor);
+        }
+
+        // Center dot
+        Screen.fill(matrixStack, centerX, centerY, centerX + 1, centerY + 1, whiteColor);
+    }
+
+    private static void renderCleanBrackets(MatrixStack matrixStack, int centerX, int centerY, int size, int whiteColor, int blackColor) {
+        // Clean, minimal brackets in corners
+        int bracketSize = size / 2;
+        int offset = size + 1;
+
+        // Top-left bracket
+        renderSingleCleanBracket(matrixStack, centerX - offset, centerY - offset, bracketSize, whiteColor, true, true);
+        // Top-right bracket
+        renderSingleCleanBracket(matrixStack, centerX + offset, centerY - offset, bracketSize, whiteColor, false, true);
+        // Bottom-left bracket
+        renderSingleCleanBracket(matrixStack, centerX - offset, centerY + offset, bracketSize, whiteColor, true, false);
+        // Bottom-right bracket
+        renderSingleCleanBracket(matrixStack, centerX + offset, centerY + offset, bracketSize, whiteColor, false, false);
+
+        // Center dot
+        Screen.fill(matrixStack, centerX, centerY, centerX + 1, centerY + 1, whiteColor);
+    }
+
+    private static void renderSingleCleanBracket(MatrixStack matrixStack, int x, int y, int size, int whiteColor, boolean flipX, boolean flipY) {
+        int dirX = flipX ? -1 : 1;
+        int dirY = flipY ? -1 : 1;
+
+        // Horizontal line
+        Screen.fill(matrixStack, x, y, x + dirX * size, y + 1, whiteColor);
+        // Vertical line
+        Screen.fill(matrixStack, x, y, x + 1, y + dirY * size, whiteColor);
+    }
+
+    /**
+     * Optimized Tessellator circle using 1.16.5 compatible methods
+     */
+    private static void renderTessellatorCircle(MatrixStack matrixStack, int centerX, int centerY, int size, int thickness) {
+        Matrix4f matrix = matrixStack.last().pose();
+
+        // Proper 1.16.5 render state setup
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
+        RenderSystem.disableTexture();
+
+        Tessellator tessellator = Tessellator.getInstance();
+        BufferBuilder buffer = tessellator.getBuilder();
+
+        float radius = size * 0.75f;
+        int segments = 16; // Reduced for better performance
+
+        // Render circle outline using LINE_STRIP
+        buffer.begin(GL11.GL_LINE_STRIP, DefaultVertexFormats.POSITION_COLOR);
+
+        for (int i = 0; i <= segments; i++) {
+            float angle = (float)(2 * Math.PI * i / segments);
+            float x = centerX + (float)Math.cos(angle) * radius;
+            float y = centerY + (float)Math.sin(angle) * radius;
+            buffer.vertex(matrix, x, y, 0).color(255, 255, 255, 255).endVertex();
+        }
+
+        tessellator.end();
+
+        // Center dot
+        buffer.begin(GL11.GL_QUADS, DefaultVertexFormats.POSITION_COLOR);
+        float dotSize = 1.0f;
+        buffer.vertex(matrix, centerX - dotSize, centerY - dotSize, 0).color(255, 255, 255, 255).endVertex();
+        buffer.vertex(matrix, centerX + dotSize, centerY - dotSize, 0).color(255, 255, 255, 255).endVertex();
+        buffer.vertex(matrix, centerX + dotSize, centerY + dotSize, 0).color(255, 255, 255, 255).endVertex();
+        buffer.vertex(matrix, centerX - dotSize, centerY + dotSize, 0).color(255, 255, 255, 255).endVertex();
+        tessellator.end();
+
+        // Restore render state
         RenderSystem.enableTexture();
-        RenderSystem.color4f(1.0f, 1.0f, 1.0f, 1.0f);
-
-        try {
-            // Get the texture to use
-            ResourceLocation texture = getCurrentCrosshairTexture();
-            minecraft.getTextureManager().bind(texture);
-
-            // Crosshair size - adjust based on your texture sizes
-            int size = 32; // You can make this configurable
-            int halfSize = size / 2;
-
-            // Render the textured quad
-            Matrix4f matrix = matrixStack.last().pose();
-            BufferBuilder buffer = Tessellator.getInstance().getBuilder();
-
-            buffer.begin(GL11.GL_QUADS, DefaultVertexFormats.POSITION_TEX);
-
-            // Bottom-left
-            buffer.vertex(matrix, centerX - halfSize, centerY + halfSize, 0.0f)
-                    .uv(0.0f, 1.0f).endVertex();
-
-            // Bottom-right
-            buffer.vertex(matrix, centerX + halfSize, centerY + halfSize, 0.0f)
-                    .uv(1.0f, 1.0f).endVertex();
-
-            // Top-right
-            buffer.vertex(matrix, centerX + halfSize, centerY - halfSize, 0.0f)
-                    .uv(1.0f, 0.0f).endVertex();
-
-            // Top-left
-            buffer.vertex(matrix, centerX - halfSize, centerY - halfSize, 0.0f)
-                    .uv(0.0f, 0.0f).endVertex();
-
-            buffer.end();
-            WorldVertexBufferUploader.end(buffer);
-
-        } catch (Exception e) {
-            LockOnMod.LOGGER.error("Error rendering crosshair texture: {}", e.getMessage());
-        } finally {
-            RenderSystem.disableBlend();
-            RenderSystem.popMatrix();
-        }
-    }
-
-    /**
-     * Get the current crosshair texture
-     */
-    private static ResourceLocation getCurrentCrosshairTexture() {
-        if (useCustomIndicators) {
-            // Use the custom indicator system
-            return CustomIndicatorManager.getCurrentIndicatorTexture();
-        } else {
-            // Use built-in crosshairs
-            return BUILT_IN_CROSSHAIRS[currentCrosshairIndex % BUILT_IN_CROSSHAIRS.length];
-        }
+        RenderSystem.disableBlend();
     }
 
     /**
      * Cycle to next crosshair
      */
     public static void cycleCrosshair() {
-        if (useCustomIndicators) {
-            CustomIndicatorManager.cycleToNextIndicator();
-            LockOnMod.LOGGER.info("Switched to custom indicator: {}", CustomIndicatorManager.getCurrentIndicatorName());
-        } else {
-            currentCrosshairIndex = (currentCrosshairIndex + 1) % BUILT_IN_CROSSHAIRS.length;
-            LockOnMod.LOGGER.info("Switched to built-in crosshair: {}", currentCrosshairIndex + 1);
-        }
-    }
+        currentCrosshairIndex = (currentCrosshairIndex + 1) % CROSSHAIR_NAMES.length;
 
-    /**
-     * Toggle between custom indicators and built-in crosshairs
-     */
-    public static void toggleCrosshairMode() {
-        useCustomIndicators = !useCustomIndicators;
-        String mode = useCustomIndicators ? "Custom Indicators" : "Built-in Crosshairs";
-        LockOnMod.LOGGER.info("Switched to: {}", mode);
-    }
-
-    /**
-     * Set specific crosshair by index (for built-in crosshairs)
-     */
-    public static void setCrosshair(int index) {
-        if (!useCustomIndicators && index >= 0 && index < BUILT_IN_CROSSHAIRS.length) {
-            currentCrosshairIndex = index;
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player != null) {
+            mc.player.displayClientMessage(
+                    new net.minecraft.util.text.StringTextComponent("Crosshair: " + CROSSHAIR_NAMES[currentCrosshairIndex]),
+                    true
+            );
         }
+
+        LockOnMod.LOGGER.info("Switched to crosshair: " + CROSSHAIR_NAMES[currentCrosshairIndex]);
     }
 
     /**
      * Get current crosshair info for display
      */
     public static String getCurrentCrosshairInfo() {
-        if (useCustomIndicators) {
-            return "Custom: " + CustomIndicatorManager.getCurrentIndicatorName();
-        } else {
-            return "Built-in: " + (currentCrosshairIndex + 1);
+        return "Style: " + CROSSHAIR_NAMES[currentCrosshairIndex];
+    }
+
+    /**
+     * Set specific crosshair by index
+     */
+    public static void setCrosshair(int index) {
+        if (index >= 0 && index < CROSSHAIR_NAMES.length) {
+            currentCrosshairIndex = index;
         }
     }
 
     /**
-     * Check if using custom indicators
+     * Get current crosshair index
      */
-    public static boolean isUsingCustomIndicators() {
-        return useCustomIndicators;
+    public static int getCurrentCrosshairIndex() {
+        return currentCrosshairIndex;
+    }
+
+    /**
+     * Get available crosshair names
+     */
+    public static String[] getCrosshairNames() {
+        return CROSSHAIR_NAMES.clone();
     }
 }

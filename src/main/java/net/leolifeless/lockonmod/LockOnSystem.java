@@ -190,8 +190,8 @@ public class LockOnSystem {
         }
 
         if (LockOnKeybinds.toggleIndicatorKey.consumeClick()) {
-            LockOnHudRenderer.toggleCrosshairMode();
-            showMessage(player, "Mode: " + (LockOnHudRenderer.isUsingCustomIndicators() ? "Custom Indicators" : "Built-in Crosshairs"));
+            LockOnHudRenderer.cycleCrosshair();
+            showMessage(player, "Crosshair: " + LockOnHudRenderer.getCurrentCrosshairInfo());
             playSound(player, "target_switch");
         }
 
@@ -506,7 +506,7 @@ public class LockOnSystem {
     }
 
     /**
-     * Enhanced camera rotation with third person smoothing
+     * Enhanced camera rotation with third person smoothing - FIXED VERSION
      */
     private static void updateCameraRotation(ClientPlayerEntity player) {
         if (targetEntity == null || !targetEntity.isAlive()) {
@@ -517,7 +517,11 @@ public class LockOnSystem {
             return;
         }
 
-        if (!LockOnConfig.isSmoothCameraEnabled()) return;
+        if (!LockOnConfig.isSmoothCameraEnabled()) {
+            // Direct snap to target if smoothing disabled
+            snapCameraToTarget(player);
+            return;
+        }
 
         // Calculate rotation with third person adjustments
         Vector3d playerEyePos = player.getEyePosition(1.0f);
@@ -545,14 +549,25 @@ public class LockOnSystem {
         float targetYaw = (float) (Math.atan2(-direction.x, direction.z) * 180.0 / Math.PI);
         float targetPitch = (float) (Math.asin(-direction.y) * 180.0 / Math.PI);
 
-        // Get rotation speed with third person adjustments
-        float rotationSpeed = calculateAdaptiveRotationSpeed(player, targetEntity);
+        // Get base rotation speed
+        float baseRotationSpeed = LockOnConfig.getRotationSpeed();
+
+        // Apply third person adjustment if needed
         if (ThirdPersonCompatibility.isThirdPersonActive()) {
-            rotationSpeed = ThirdPersonCompatibility.getAdjustedRotationSpeed(rotationSpeed);
+            baseRotationSpeed = ThirdPersonCompatibility.getAdjustedRotationSpeed(baseRotationSpeed);
         }
 
-        // Get smoothing factor
-        float smoothingFactor = LockOnConfig.getCameraSmoothness() * rotationSpeed;
+        // Calculate adaptive speed multiplier
+        float speedMultiplier = 1.0f;
+        if (LockOnConfig.isAdaptiveRotationEnabled()) {
+            speedMultiplier = calculateAdaptiveSpeedMultiplier(player, targetEntity);
+        }
+
+        // Final rotation speed - much more aggressive for responsive feel
+        float finalRotationSpeed = Math.min(baseRotationSpeed * speedMultiplier * 8.0f, 0.8f); // Increased multiplier and cap
+
+        // Apply smoothing - use simpler calculation
+        float smoothingFactor = finalRotationSpeed;
         if (ThirdPersonCompatibility.shouldUseEnhancedSmoothing()) {
             smoothingFactor = ThirdPersonCompatibility.getThirdPersonSmoothingFactor(smoothingFactor);
         }
@@ -572,15 +587,35 @@ public class LockOnSystem {
     }
 
     /**
-     * Calculate adaptive rotation speed with proper type casting
+     * Snap camera directly to target (no smoothing)
      */
-    private static float calculateAdaptiveRotationSpeed(ClientPlayerEntity player, Entity target) {
-        float baseSpeed = LockOnConfig.getRotationSpeed();
+    private static void snapCameraToTarget(ClientPlayerEntity player) {
+        Vector3d playerEyePos = player.getEyePosition(1.0f);
+        Vector3d targetPos = targetEntity.getEyePosition(1.0f);
 
-        if (!LockOnConfig.isAdaptiveRotationEnabled()) {
-            return baseSpeed;
+        // Adjust for third person if needed
+        if (ThirdPersonCompatibility.isThirdPersonActive()) {
+            Vector3d cameraOffset = ThirdPersonCompatibility.getThirdPersonCameraOffset();
+            playerEyePos = playerEyePos.add(cameraOffset.scale(0.3));
+            targetPos = ThirdPersonCompatibility.getAdjustedTargetPosition(targetEntity, targetPos);
         }
 
+        // Calculate direction and set rotation directly
+        Vector3d direction = targetPos.subtract(playerEyePos).normalize();
+        float targetYaw = (float) (Math.atan2(-direction.x, direction.z) * 180.0 / Math.PI);
+        float targetPitch = (float) (Math.asin(-direction.y) * 180.0 / Math.PI);
+
+        // Clamp pitch
+        targetPitch = Math.max(-90.0f, Math.min(90.0f, targetPitch));
+
+        player.yRot = targetYaw;
+        player.xRot = targetPitch;
+    }
+
+    /**
+     * Calculate adaptive speed multiplier (simplified version)
+     */
+    private static float calculateAdaptiveSpeedMultiplier(ClientPlayerEntity player, Entity target) {
         // Calculate factors for adaptive speed - use actual distance, not squared
         double distance = player.distanceTo(target);
         Vector3d direction = target.getEyePosition(1.0f).subtract(player.getEyePosition(1.0f)).normalize();
@@ -592,18 +627,20 @@ public class LockOnSystem {
             distance += ThirdPersonCompatibility.getThirdPersonCameraOffset().length();
         }
 
-        // Weight factors - cast to float properly
-        float distanceWeight = (float) LockOnConfig.getDistancePriorityWeight();
-        float angleWeight = (float) LockOnConfig.getAnglePriorityWeight();
+        // Simple adaptive calculation - closer targets and larger angles = faster rotation
+        float distanceFactor = (float) Math.max(0.5, 2.0 - (distance / LockOnConfig.getMaxLockOnDistance()));
+        float angleFactor = (float) Math.max(0.5, 1.0 + (angleDifference / 90.0)); // More aggressive angle response
 
-        // Calculate adaptive factors - cast to float properly
-        float distanceFactor = (float) (1.0 + (distanceWeight * (distance / LockOnConfig.getMaxLockOnDistance())));
-        float angleFactor = (float) (1.0 + (angleWeight * (angleDifference / 180.0)));
+        return distanceFactor * angleFactor;
+    }
 
-        float adaptiveSpeed = baseSpeed * distanceFactor * angleFactor;
-
-        return Math.max(LockOnConfig.getMinRotationSpeed(),
-                Math.min(LockOnConfig.getMaxRotationSpeed(), adaptiveSpeed));
+    /**
+     * Calculate adaptive rotation speed with proper type casting - DEPRECATED
+     * This method is kept for compatibility but should not be used
+     */
+    private static float calculateAdaptiveRotationSpeed(ClientPlayerEntity player, Entity target) {
+        // This method was causing the slow rotation - keeping for backward compatibility
+        return LockOnConfig.getRotationSpeed() * calculateAdaptiveSpeedMultiplier(player, target);
     }
 
     /**
