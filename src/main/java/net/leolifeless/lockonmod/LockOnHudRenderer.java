@@ -10,6 +10,7 @@ import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.client.renderer.vertex.DefaultVertexFormats;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.LivingEntity;
+import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.vector.Matrix4f;
 import net.minecraftforge.client.event.RenderGameOverlayEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -149,36 +150,60 @@ public class LockOnHudRenderer {
     }
 
     /**
-     * Render crosshair using lightweight methods optimized for 1.16.5
+     * Render crosshair using textures or drawn shapes
      */
     private static void renderLightweightCrosshair(MatrixStack matrixStack, int centerX, int centerY) {
-        int size = 8;      // Reduced size for cleaner look
-        int thickness = 1;  // Thinner lines
-
-        // Colors - using proper ARGB format for 1.16.5
-        int whiteColor = 0xFFFFFFFF;
-        int blackColor = 0xFF000000;
+        Minecraft mc = Minecraft.getInstance();
 
         switch (currentCrosshairIndex) {
-            case 0: // Cross
-                renderCleanCross(matrixStack, centerX, centerY, size, thickness, whiteColor, blackColor);
+            case 0: // Cross - use texture
+                renderTexturedCrosshair(matrixStack, centerX, centerY, "textures/gui/crosshair_alt.png", 32);
                 break;
-            case 1: // Circle (clean approximated)
-                renderCleanCircle(matrixStack, centerX, centerY, size, whiteColor, blackColor);
+            case 1: // Circle - use texture
+                renderTexturedCrosshair(matrixStack, centerX, centerY, "textures/gui/target_circle.png", 32);
                 break;
-            case 2: // Optimized Tessellator Circle
-                renderTessellatorCircle(matrixStack, centerX, centerY, size, thickness);
+            case 2: // Optimized Circle - drawn (no texture)
+                renderTessellatorCircle(matrixStack, centerX, centerY, 16, 1);
                 break;
-            case 3: // Square
-                renderCleanSquare(matrixStack, centerX, centerY, size, whiteColor, blackColor);
+            case 3: // Square - use texture
+                renderTexturedCrosshair(matrixStack, centerX, centerY, "textures/gui/custom_indicator.png", 32);
                 break;
-            case 4: // Diamond
-                renderCleanDiamond(matrixStack, centerX, centerY, size, whiteColor, blackColor);
+            case 4: // Diamond - use texture
+                renderTexturedCrosshair(matrixStack, centerX, centerY, "textures/gui/reticle.png", 32);
                 break;
-            case 5: // Brackets
-                renderCleanBrackets(matrixStack, centerX, centerY, size, whiteColor, blackColor);
+            case 5: // Brackets - drawn (no texture)
+                int whiteColor = 0xFFFFFFFF;
+                int blackColor = 0xFF000000;
+                renderCleanBrackets(matrixStack, centerX, centerY, 16, whiteColor, blackColor);
+                break;
+            default:
+                renderTexturedCrosshair(matrixStack, centerX, centerY, "textures/gui/crosshair_alt.png", 32);
                 break;
         }
+    }
+
+    /**
+     * Helper method to render a textured crosshair
+     */
+    private static void renderTexturedCrosshair(MatrixStack matrixStack, int centerX, int centerY, String texturePath, int size) {
+        Minecraft mc = Minecraft.getInstance();
+        ResourceLocation texture = new ResourceLocation(LockOnMod.MOD_ID, texturePath);
+
+        // Bind and render the texture
+        mc.getTextureManager().bind(texture);
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+        RenderSystem.enableTexture();
+        RenderSystem.color4f(1.0f, 1.0f, 1.0f, 1.0f);
+
+        // Render the texture centered on the crosshair position
+        int x = centerX - size / 2;
+        int y = centerY - size / 2;
+
+        // Use Screen.blit for texture rendering in 1.16.5
+        Screen.blit(matrixStack, x, y, 0, 0, size, size, size, size);
+
+        RenderSystem.disableBlend();
     }
 
     private static void renderCleanCross(MatrixStack matrixStack, int centerX, int centerY, int size, int thickness, int whiteColor, int blackColor) {

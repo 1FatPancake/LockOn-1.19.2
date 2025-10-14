@@ -99,7 +99,3 @@ publishing {
         }
     }
 }
-
-tasks.named('build').configure {
-    finalizedBy 'reobfJar'
-}
