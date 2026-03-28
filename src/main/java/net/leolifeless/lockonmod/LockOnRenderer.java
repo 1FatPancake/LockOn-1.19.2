@@ -1,8 +1,13 @@
 package net.leolifeless.lockonmod;
 
+import com.github.exopandora.shouldersurfing.api.client.IShoulderSurfing;
+import com.github.exopandora.shouldersurfing.api.client.IShoulderSurfingCamera;
+import com.github.exopandora.shouldersurfing.api.client.ShoulderSurfing;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
+import net.leolifeless.lockonmod.compat.ShoulderSurfingCompat;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.Entity;
@@ -32,31 +37,25 @@ public class LockOnRenderer {
      */
     public static void renderLockOnIndicator(RenderLevelStageEvent event, Entity target) {
         Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.level == null || minecraft.player == null || target == null) return;
+        LocalPlayer player = minecraft.player;
+        if (minecraft.level == null || player == null || target == null) return;
 
-        // Update animations
         updateAnimations();
 
-        // Get the camera position
+        // Always use main camera position - the pose stack is camera-relative
+        // SS already positions the camera correctly, getPosition() returns the right value
         Vec3 cameraPos = minecraft.gameRenderer.getMainCamera().getPosition();
+        Vec3 targetPos = target.getEyePosition();
 
-        // Get position of the entity with configurable offset
-        float heightOffset = LockOnConfig.getCameraOffset();
-        Vec3 targetPos = target.position().add(0, target.getBbHeight() * heightOffset, 0);
-
-        // Calculate relative position
         double x = targetPos.x - cameraPos.x;
         double y = targetPos.y - cameraPos.y;
         double z = targetPos.z - cameraPos.z;
 
-        // Set up rendering
         PoseStack poseStack = event.getPoseStack();
         poseStack.pushPose();
-
-        // Move to the target position
         poseStack.translate(x, y, z);
 
-        // Make the indicator always face the camera
+        // Billboard to face camera using camera rotation
         poseStack.mulPose(minecraft.gameRenderer.getMainCamera().rotation());
         poseStack.mulPose(new org.joml.Quaternionf().rotationY((float) Math.PI));
 

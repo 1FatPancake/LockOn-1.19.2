@@ -1,5 +1,7 @@
 package net.leolifeless.lockonmod;
 
+import net.leolifeless.lockonmod.compat.LeawindCompat;
+import net.leolifeless.lockonmod.compat.ShoulderSurfingCompat;
 import net.leolifeless.lockonmod.compat.ThirdPersonCompatibility;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -149,12 +151,6 @@ public class LockOnSystem {
 
         // Handle input every tick for responsiveness
         handleInput(player);
-
-        // Separate update intervals for different operations
-        if (currentTick - lastTargetingUpdate >= targetingUpdateInterval) {
-            updateTargetingOptimizedWithSync(player, currentTick); // NEW: Enhanced method
-            lastTargetingUpdate = currentTick;
-        }
 
         // Only update camera if not experiencing lag (NEW)
         boolean skipCameraOnLag = true; // You can make this configurable
@@ -780,6 +776,10 @@ public class LockOnSystem {
      * Optimized angle checking with third person adjustments
      */
     private static boolean isWithinTargetingAngleOptimized(LocalPlayer player, Entity target) {
+        if (targetEntity != null && target == targetEntity &&
+                ThirdPersonCompatibility.isShoulderSurfingDecoupled()) {
+            return true; // Maintain lock regardless of player body rotation
+        }
         // Get angle with third person adjustments
         double maxAngle = getTargetingAngleAdjusted();
 
@@ -837,8 +837,6 @@ public class LockOnSystem {
         }
     }
 
-    // Replace your updateCameraRotationOptimized method with this faster but still smooth version:
-
     /**
      * Balanced camera rotation - faster but smooth
      */
@@ -871,8 +869,19 @@ public class LockOnSystem {
         float targetPitch = (float) (Math.asin(-direction.y) * 180.0 / Math.PI);
 
         // Get current rotation
-        float currentYaw = player.getYRot();
-        float currentPitch = player.getXRot();
+        float currentYaw, currentPitch;
+        if (ShoulderSurfingCompat.isActive()) {
+            float[] camRot = ShoulderSurfingCompat.getCameraRotation();
+            currentYaw = camRot[0];
+            currentPitch = camRot[1];
+        } else if (LeawindCompat.isLoaded() && LeawindCompat.isInitialized()) {
+            float[] camRot = LeawindCompat.getCameraRotation();
+            currentYaw = camRot[0];
+            currentPitch = camRot[1];
+        } else {
+            currentYaw = player.getYRot();
+            currentPitch = player.getXRot();
+        }
 
         // ADAPTIVE rotation speed based on distance and angle difference
         float distance = player.distanceTo(targetEntity);
@@ -880,7 +889,7 @@ public class LockOnSystem {
         float pitchDiff = targetPitch - currentPitch;
 
         // Calculate adaptive speed
-        float baseSpeed = 0.65f; // Increased from 0.15f
+        float baseSpeed = 0.15f; // Increased from 0.15f
 
         // Distance scaling - closer targets need faster rotation
         float distanceScale = 1.0f;
@@ -930,36 +939,46 @@ public class LockOnSystem {
 
         // Keep your original rotation methods but with adaptive speed
         try {
-            // Method 1: Direct setters
-            player.setYRot(newYaw);
-            player.setXRot(newPitch);
-            LockOnMod.LOGGER.info("Applied Method 1: setYRot/setXRot");
-
-            // Method 2: Head rotation
-            player.setYHeadRot(newYaw);
-            LockOnMod.LOGGER.info("Applied Method 2: setYHeadRot");
-
-            // Method 3: Turn method (with adaptive speed)
-            player.turn(yawDiff * rotationSpeed * 0.3f, pitchDiff * rotationSpeed * 0.3f);
-            LockOnMod.LOGGER.info("Applied Method 3: turn (adaptive)");
-
-            // Method 4: Force previous rotation values
-            player.yRotO = newYaw;
-            player.xRotO = newPitch;
-            LockOnMod.LOGGER.info("Applied Method 4: yRotO/xRotO");
-
+            if (ShoulderSurfingCompat.isActive()) {
+                ShoulderSurfingCompat.setCameraRotation(newYaw, newPitch);
+                player.setYRot(newYaw);
+                player.setXRot(newPitch);
+                player.setYHeadRot(newYaw);
+                player.yRotO = newYaw;
+                player.xRotO = newPitch;
+            } else if (LeawindCompat.isLoaded() && LeawindCompat.isInitialized()) {
+                LeawindCompat.forceCameraFollowEntity();
+                LeawindCompat.setCameraRotation(newYaw, newPitch); // belt AND suspenders
+                player.setYRot(newYaw);
+                player.setXRot(newPitch);
+                player.setYHeadRot(newYaw);
+                player.yRotO = newYaw;
+                player.xRotO = newPitch;
+            } else {
+                player.setYRot(newYaw);
+                player.setXRot(newPitch);
+                player.setXRot(newPitch);
+                player.setYHeadRot(newYaw);
+                player.yRotO = newYaw;
+                player.xRotO = newPitch;
+                player.turn(yawDiff * rotationSpeed * 0.3f, pitchDiff * rotationSpeed * 0.3f);
+            }
         } catch (Exception e) {
             LockOnMod.LOGGER.error("Failed to apply camera rotation: {}", e.getMessage());
         }
 
         // Verify the rotation was applied (keep your original verification)
+        // Verify the rotation was applied
         float verifyYaw = player.getYRot();
         float verifyPitch = player.getXRot();
         LockOnMod.LOGGER.info("VERIFICATION - Final Yaw/Pitch: {}/{}", verifyYaw, verifyPitch);
 
-        if (Math.abs(verifyYaw - newYaw) > 0.1f || Math.abs(verifyPitch - newPitch) > 0.1f) {
-            LockOnMod.LOGGER.warn("ROTATION NOT APPLIED! Expected: {}/{}, Got: {}/{}",
-                    newYaw, newPitch, verifyYaw, verifyPitch);
+        if (Math.abs(verifyYaw - newYaw) > 0.1f) {
+            LockOnMod.LOGGER.warn("YAW NOT APPLIED! Expected: {}, Got: {}", newYaw, verifyYaw);
+        } else if (!ShoulderSurfingCompat.isActive() && Math.abs(verifyPitch - newPitch) > 0.1f) {
+            // Only check pitch mismatch when SS is NOT active
+            // When SS is active, pitch is set on the camera object, not the player
+            LockOnMod.LOGGER.warn("PITCH NOT APPLIED! Expected: {}, Got: {}", newPitch, verifyPitch);
         } else {
             LockOnMod.LOGGER.info("ROTATION SUCCESS!");
         }
@@ -972,11 +991,11 @@ public class LockOnSystem {
         if (target == null) return;
 
         // Log current state
-        LockOnMod.LOGGER.info("=== CAMERA DEBUG ===");
-        LockOnMod.LOGGER.info("Target: {}", target.getDisplayName().getString());
-        LockOnMod.LOGGER.info("Player Yaw: {}, Pitch: {}", player.getYRot(), player.getXRot());
-        LockOnMod.LOGGER.info("Smooth Camera Enabled: {}", getConfigBoolean("smoothCamera", true));
-        LockOnMod.LOGGER.info("Target Distance: {}", player.distanceTo(target));
+//        LockOnMod.LOGGER.info("=== CAMERA DEBUG ===");
+//        LockOnMod.LOGGER.info("Target: {}", target.getDisplayName().getString());
+//        LockOnMod.LOGGER.info("Player Yaw: {}, Pitch: {}", player.getYRot(), player.getXRot());
+//        LockOnMod.LOGGER.info("Smooth Camera Enabled: {}", getConfigBoolean("smoothCamera", true));
+//        LockOnMod.LOGGER.info("Target Distance: {}", player.distanceTo(target));
 
         // Calculate what the rotation should be
         Vec3 playerEyePos = player.getEyePosition();
@@ -985,8 +1004,8 @@ public class LockOnSystem {
         float targetYaw = (float) (Math.atan2(-direction.x, direction.z) * 180.0 / Math.PI);
         float targetPitch = (float) (Math.asin(-direction.y) * 180.0 / Math.PI);
 
-        LockOnMod.LOGGER.info("Calculated Target Yaw: {}, Pitch: {}", targetYaw, targetPitch);
-        LockOnMod.LOGGER.info("=================");
+//        LockOnMod.LOGGER.info("Calculated Target Yaw: {}, Pitch: {}", targetYaw, targetPitch);
+//        LockOnMod.LOGGER.info("=================");
     }
 
     /**
@@ -1160,15 +1179,21 @@ public class LockOnSystem {
      */
     @SubscribeEvent
     public static void onRenderLevel(RenderLevelStageEvent event) {
-        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) return;
-        if (targetEntity == null || !indicatorVisible) return;
+        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_PARTICLES) return;
 
         Minecraft mc = Minecraft.getInstance();
         LocalPlayer player = mc.player;
         if (player == null) return;
 
-        // Use the correct method signature that matches your current LockOnRenderer
-        LockOnRenderer.renderLockOnIndicator(event, targetEntity);
+        // Render indicator
+        if (targetEntity != null && indicatorVisible) {
+            LockOnRenderer.renderLockOnIndicator(event, targetEntity);
+        }
+
+        // Update camera rotation every frame (not every tick) for smoothness
+        if (targetEntity != null) {
+            updateCameraRotationOptimized(player);
+        }
     }
 
     /**
@@ -1347,7 +1372,10 @@ public class LockOnSystem {
      * Sets the target entity
      */
     private static void setTarget(Entity target) {
+        ThirdPersonCompatibility.ensurePlayerRotationSettings();
+
         targetEntity = target;
+        firstRotationFrame = true;
         wasLocked = true;
 
         // Clear caches for new target
@@ -1355,13 +1383,14 @@ public class LockOnSystem {
         lineOfSightCache.clear();
         entityPositionCache.clear();
 
-        // NEW: Handle third person compatibility and input conflicts
-        ThirdPersonCompatibility.ensurePlayerRotationFollowsCamera();
 
         // NEW: Specifically handle Shoulder Surfing input conflicts
         if (ThirdPersonCompatibility.getActiveMod() == ThirdPersonCompatibility.ActiveThirdPersonMod.SHOULDER_SURFING) {
             ThirdPersonCompatibility.disableShoulderSurfingInput();
             LockOnMod.LOGGER.debug("Disabled Shoulder Surfing input for lock-on compatibility");
+        }
+        if (LeawindCompat.isLoaded() && LeawindCompat.isInitialized()) {
+            LeawindCompat.forceCameraFollowEntity();
         }
     }
 
@@ -1435,18 +1464,21 @@ public class LockOnSystem {
      * Clears the current target
      */
     public static void clearTarget() {
+        ThirdPersonCompatibility.restorePlayerRotationSettings();
         if (targetEntity != null) {
-            onTargetLost();
-
-            // NEW: Restore third person settings and input handling
-            ThirdPersonCompatibility.restorePlayerRotationSettings();
-
-            // NEW: Specifically re-enable Shoulder Surfing input
-            if (ThirdPersonCompatibility.getActiveMod() == ThirdPersonCompatibility.ActiveThirdPersonMod.SHOULDER_SURFING) {
-                ThirdPersonCompatibility.enableShoulderSurfingInput();
-                LockOnMod.LOGGER.debug("Re-enabled Shoulder Surfing input after lock-on");
-            }
+            showMessage(Minecraft.getInstance().player, "Lock-On Released");
+            playSound(Minecraft.getInstance().player, "target_lost");
         }
+
+        targetEntity = null;
+        potentialTargets.clear();
+        currentTargetIndex = -1;
+        firstRotationFrame = true;
+
+        if (wasLocked) {
+            playSound(Minecraft.getInstance().player, "target_lost");
+        }
+        wasLocked = false;
 
         targetEntity = null;
         potentialTargets.clear();
