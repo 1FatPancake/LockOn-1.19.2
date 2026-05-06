@@ -50,6 +50,8 @@ repositories {
 
 dependencies {
     minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+
+    compileOnly fg.deobf(files("libs/ShoulderSurfing-Forge-1.16.5-4.10.5-API.jar"))
 }
 
 sourceSets.main.resources { srcDir 'src/generated/resources' }
