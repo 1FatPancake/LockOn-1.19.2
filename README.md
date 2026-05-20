@@ -1,6 +1,6 @@
-# TargetLock Mod
+# Welcome to the TargetLock Mod's Source code.
 
-A comprehensive lock-on targeting system for Minecraft 1.19.2 with smooth camera control, intelligent target selection, and custom visual indicators.
+A comprehensive lock-on targeting system for Minecraft 1.19/1.20/1.16 with smooth camera control, intelligent target selection, and custom visual indicators.
 
 ## 🎯 Features
 
@@ -25,7 +25,7 @@ A comprehensive lock-on targeting system for Minecraft 1.19.2 with smooth camera
 ## 🖼️ Custom Indicators
 
 ### Quick Setup:
-1. Go to `.minecraft/config/lockonmod/custom_indicators/`
+1. Go to `.minecraft/config/lockonmod/custom_indicators/.`
 2. Drop your PNG files (64x64 recommended)
 3. Press F3+T to reload or restart the game
 4. Use `Ctrl + V` to cycle through your indicators
@@ -35,14 +35,6 @@ A comprehensive lock-on targeting system for Minecraft 1.19.2 with smooth camera
 - 8x8 to 512x512 pixels (64x64 recommended)
 - Use white/light colors for best results
 
-## 🛠️ Key Features
-
-- **60+ Configuration Options**: Customize everything from targeting behavior to visual effects
-- **Multiple Targeting Modes**: Switch between different targeting priorities
-- **Smart Filtering**: Target only what you want with extensive filter options
-- **Performance Optimized**: Configurable update rates and search limits
-- **Audio Feedback**: Sound effects for targeting events
-
 ## 🐛 Troubleshooting
 
 - **Poor Performance**: Reduce update frequency and max targets in the config
@@ -51,9 +43,9 @@ A comprehensive lock-on targeting system for Minecraft 1.19.2 with smooth camera
 
 ## 📞 Support
 
-- Report issues on GitHub
+- Report issues in Discord
 - Check logs in `.minecraft/logs/` for errors
-- Config files in `.minecraft/config/lockonmod/`
+- Config files in `.minecraft/config/lockonmod/.`
 
 ---
 
