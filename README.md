@@ -3,9 +3,7 @@
 A comprehensive lock-on targeting system for Minecraft 1.19/1.20/1.16 with smooth camera control, intelligent target selection, and custom visual indicators.
 
 ## Links
-
-[![Discord](https://shields.io)](https://discord.gg/dVfKt3f6Jj)
-
+[![Discord Server Invite](https://invite.casperiv.dev?inviteCode=dVfKt3f6Jj)](https://discord.gg/dVfKt3f6Jj)
 
 ## 🎯 Features
 
