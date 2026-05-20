@@ -2,6 +2,12 @@
 
 A comprehensive lock-on targeting system for Minecraft 1.19/1.20/1.16 with smooth camera control, intelligent target selection, and custom visual indicators.
 
+## Links
+
+[![Discord Banner](https://discord.com)](https://discord.com)
+
+
+
 ## 🎯 Features
 
 - **Smart Targeting**: Lock onto entities with multiple targeting modes (Closest, Most Damaged, Crosshair Centered, Threat Level)
