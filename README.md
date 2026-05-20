@@ -4,8 +4,7 @@ A comprehensive lock-on targeting system for Minecraft 1.19/1.20/1.16 with smoot
 
 ## Links
 
-[![Discord Banner](https://discord.com)](https://discord.com)
-
+[![Discord](https://shields.io)](https://discord.gg/dVfKt3f6Jj)
 
 
 ## 🎯 Features
