@@ -49,4 +49,4 @@ A comprehensive lock-on targeting system for Minecraft 1.19/1.20/1.16 with smoot
 
 ---
 
-**Created by Leolifeless** | **Minecraft 1.19.2** | **Client-Side Only**
+**Created by Leolifeless** | **Minecraft 1.19/1.20/1.16** | **Client-Side Only**
