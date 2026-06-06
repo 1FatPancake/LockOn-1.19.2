@@ -18,11 +18,6 @@ import java.awt.Color;
  */
 public class LockOnRenderer {
 
-    private static final ResourceLocation CROSSHAIR_TEXTURE = ResourceLocation.fromNamespaceAndPath(LockOnMod.MOD_ID, "textures/gui/crosshair.png");
-    private static final ResourceLocation CIRCLE_TEXTURE = ResourceLocation.fromNamespaceAndPath(LockOnMod.MOD_ID, "textures/gui/circle.png");
-    private static final ResourceLocation DIAMOND_TEXTURE = ResourceLocation.fromNamespaceAndPath(LockOnMod.MOD_ID, "textures/gui/diamond.png");
-    private static final ResourceLocation SQUARE_TEXTURE = ResourceLocation.fromNamespaceAndPath(LockOnMod.MOD_ID, "textures/gui/square.png");
-
     // Animation variables
     private static long animationTime = 0;
     private static float pulsePhase = 0.0f;
@@ -31,8 +26,7 @@ public class LockOnRenderer {
      * Enhanced indicator rendering with third person support
      */
     public static void renderLockOnIndicator(PoseStack poseStack, Entity target, Vec3 targetPos,
-                                             float baseSize, LockOnConfig.IndicatorType type,
-                                             boolean isThirdPerson) {
+                                             float baseSize, boolean isThirdPerson) {
 
         if (target == null || !target.isAlive()) return;
 
@@ -63,29 +57,16 @@ public class LockOnRenderer {
         Color primaryColor = calculateIndicatorColor(target, distance, isThirdPerson);
         Color outlineColor = calculateOutlineColor(target, distance, isThirdPerson);
 
-        // Render the indicator
-        switch (type) {
-            case CIRCLE:
-                renderCircleIndicator(poseStack, targetPos, adjustedSize, primaryColor, outlineColor, isThirdPerson);
-                break;
-            case CROSSHAIR:
-                renderCrosshairIndicator(poseStack, targetPos, adjustedSize, primaryColor, outlineColor, isThirdPerson);
-                break;
-            case DIAMOND:
-                renderDiamondIndicator(poseStack, targetPos, adjustedSize, primaryColor, outlineColor, isThirdPerson);
-                break;
-            case SQUARE:
-                renderSquareIndicator(poseStack, targetPos, adjustedSize, primaryColor, outlineColor, isThirdPerson);
-                break;
-            case CUSTOM:
-                renderCustomIndicator(poseStack, targetPos, adjustedSize, primaryColor, outlineColor, isThirdPerson);
-                break;
+        // Render the indicator — drawn shapes by name, everything else as a texture
+        String indicatorName = CustomIndicatorManager.getCurrentIndicatorName();
+        switch (indicatorName) {
+            case "circle"    -> renderCircleIndicator(poseStack, targetPos, adjustedSize, primaryColor, outlineColor, isThirdPerson);
+            case "crosshair" -> renderCrosshairIndicator(poseStack, targetPos, adjustedSize, primaryColor, outlineColor, isThirdPerson);
+            case "diamond"   -> renderDiamondIndicator(poseStack, targetPos, adjustedSize, primaryColor, outlineColor, isThirdPerson);
+            case "square"    -> renderSquareIndicator(poseStack, targetPos, adjustedSize, primaryColor, outlineColor, isThirdPerson);
+            default          -> renderCustomIndicator(poseStack, targetPos, adjustedSize, primaryColor, outlineColor, isThirdPerson);
         }
 
-        // Render additional info if enabled
-        if (LockOnConfig.showTargetName() || LockOnConfig.showTargetHealth() || LockOnConfig.showTargetDistance()) {
-            renderTargetInfo(poseStack, target, targetPos, adjustedSize, isThirdPerson);
-        }
     }
 
     /**
@@ -428,15 +409,6 @@ public class LockOnRenderer {
         // Implementation for textured rendering would go here
         // For now, fallback to circle
         renderCircleIndicator(poseStack, pos, size, color, Color.WHITE, isThirdPerson);
-    }
-
-    /**
-     * Render target information text
-     */
-    private static void renderTargetInfo(PoseStack poseStack, Entity target, Vec3 pos,
-                                         float size, boolean isThirdPerson) {
-        // Implementation for rendering target name, health, distance info
-        // This would render text above/below the indicator
     }
 
     /**

@@ -176,7 +176,6 @@ public class LockOnSystem {
                 targetEntity,
                 targetPos,
                 indicatorSize,
-                LockOnConfig.getIndicatorType(),
                 ThirdPersonCompatibility.isThirdPersonActive()
         );
     }
@@ -602,7 +601,8 @@ public class LockOnSystem {
             playSound(player, "target_switch");
         }
         if (LockOnKeybinds.cycleIndicatorTypeKey.consumeClick()) {
-            showMessage(player, "Indicator: " + LockOnConfig.getIndicatorType().name());
+            String next = CustomIndicatorManager.cycleToNextIndicator();
+            showMessage(player, "Indicator: " + next);
             playSound(player, "target_switch");
         }
     }
