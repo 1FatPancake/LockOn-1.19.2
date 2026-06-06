@@ -460,8 +460,8 @@ public class LockOnSystem {
             playSound(player, "target_switch");
         }
         if (LockOnKeybinds.cycleIndicatorTypeKey.consumeClick()) {
-            LockOnHudRenderer.cycleCrosshair();
-            showMessage(player, "Crosshair: " + LockOnHudRenderer.getCurrentCrosshairInfo());
+            String next = CustomIndicatorManager.cycleToNextIndicator();
+            showMessage(player, "Indicator: " + next);
             playSound(player, "target_switch");
         }
     }
@@ -491,7 +491,6 @@ public class LockOnSystem {
                 targetEntity,
                 targetPos,
                 indicatorSize,
-                LockOnConfig.getIndicatorType(),
                 ThirdPersonCompatibility.isThirdPersonActive()
         );
     }

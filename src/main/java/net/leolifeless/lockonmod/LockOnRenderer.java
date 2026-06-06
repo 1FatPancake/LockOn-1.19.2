@@ -23,11 +23,6 @@ import java.awt.Color;
  */
 public class LockOnRenderer {
 
-    private static final ResourceLocation CROSSHAIR_TEXTURE = new ResourceLocation(LockOnMod.MOD_ID, "textures/gui/crosshair.png");
-    private static final ResourceLocation CIRCLE_TEXTURE = new ResourceLocation(LockOnMod.MOD_ID, "textures/gui/circle.png");
-    private static final ResourceLocation DIAMOND_TEXTURE = new ResourceLocation(LockOnMod.MOD_ID, "textures/gui/diamond.png");
-    private static final ResourceLocation SQUARE_TEXTURE = new ResourceLocation(LockOnMod.MOD_ID, "textures/gui/square.png");
-
     // Animation variables
     private static long animationTime = 0;
     private static float pulsePhase = 0.0f;
@@ -36,8 +31,7 @@ public class LockOnRenderer {
      * Enhanced indicator rendering with third person support
      */
     public static void renderLockOnIndicator(MatrixStack matrixStack, Entity target, Vector3d targetPos,
-                                             float baseSize, LockOnConfig.IndicatorType type,
-                                             boolean isThirdPerson) {
+                                             float baseSize, boolean isThirdPerson) {
 
         if (target == null || !target.isAlive()) return;
 
@@ -68,29 +62,16 @@ public class LockOnRenderer {
         Color primaryColor = calculateIndicatorColor(target, distance, isThirdPerson);
         Color outlineColor = calculateOutlineColor(target, distance, isThirdPerson);
 
-        // Render the indicator
-        switch (type) {
-            case CIRCLE:
-                renderCircleIndicator(matrixStack, targetPos, adjustedSize, primaryColor, outlineColor, isThirdPerson);
-                break;
-            case CROSSHAIR:
-                renderCrosshairIndicator(matrixStack, targetPos, adjustedSize, primaryColor, outlineColor, isThirdPerson);
-                break;
-            case DIAMOND:
-                renderDiamondIndicator(matrixStack, targetPos, adjustedSize, primaryColor, outlineColor, isThirdPerson);
-                break;
-            case SQUARE:
-                renderSquareIndicator(matrixStack, targetPos, adjustedSize, primaryColor, outlineColor, isThirdPerson);
-                break;
-            case CUSTOM:
-                renderCustomIndicator(matrixStack, targetPos, adjustedSize, primaryColor, outlineColor, isThirdPerson);
-                break;
+        // Render the indicator — drawn shapes by name, everything else as a texture
+        String indicatorName = CustomIndicatorManager.getCurrentIndicatorName();
+        switch (indicatorName) {
+            case "circle":    renderCircleIndicator(matrixStack, targetPos, adjustedSize, primaryColor, outlineColor, isThirdPerson); break;
+            case "crosshair": renderCrosshairIndicator(matrixStack, targetPos, adjustedSize, primaryColor, outlineColor, isThirdPerson); break;
+            case "diamond":   renderDiamondIndicator(matrixStack, targetPos, adjustedSize, primaryColor, outlineColor, isThirdPerson); break;
+            case "square":    renderSquareIndicator(matrixStack, targetPos, adjustedSize, primaryColor, outlineColor, isThirdPerson); break;
+            default:          renderCustomIndicator(matrixStack, targetPos, adjustedSize, primaryColor, outlineColor, isThirdPerson); break;
         }
 
-        // Render additional info if enabled
-        if (LockOnConfig.showTargetName() || LockOnConfig.showTargetHealth() || LockOnConfig.showTargetDistance()) {
-            renderTargetInfo(matrixStack, target, targetPos, adjustedSize, isThirdPerson);
-        }
     }
 
     /**
@@ -524,75 +505,6 @@ public class LockOnRenderer {
     }
 
     /**
-     * Render target information text (1.16.5 compatible)
-     */
-    private static void renderTargetInfo(MatrixStack matrixStack, Entity target, Vector3d pos,
-                                         float size, boolean isThirdPerson) {
-        if (!LockOnConfig.showTargetName() && !LockOnConfig.showTargetHealth() && !LockOnConfig.showTargetDistance()) {
-            return;
-        }
-
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null) return;
-
-        matrixStack.pushPose();
-
-        // Setup text rendering
-        IRenderTypeBuffer.Impl renderTypeBuffer = IRenderTypeBuffer.immediate(Tessellator.getInstance().getBuilder());
-
-        // Calculate text position (above the indicator)
-        float textY = (float)pos.y + size + 0.5f;
-
-        // Get text color
-        Color textColor = LockOnConfig.getTextColor();
-        int colorInt = (textColor.getAlpha() << 24) |
-                (textColor.getRed() << 16) |
-                (textColor.getGreen() << 8) |
-                textColor.getBlue();
-
-        // Render target name
-        if (LockOnConfig.showTargetName()) {
-            String name = target.getDisplayName().getString();
-            float textWidth = mc.font.width(name) * 0.5f;
-
-            mc.font.drawInBatch(name, (float)pos.x - textWidth, textY, colorInt, false,
-                    matrixStack.last().pose(), renderTypeBuffer, false, 0, 15728880);
-            textY += 10;
-        }
-
-        // Render health info
-        if (LockOnConfig.showTargetHealth() && target instanceof LivingEntity) {
-            LivingEntity living = (LivingEntity) target;
-            String healthText = String.format("%.0f/%.0f HP", living.getHealth(), living.getMaxHealth());
-            float textWidth = mc.font.width(healthText) * 0.5f;
-
-            mc.font.drawInBatch(healthText, (float)pos.x - textWidth, textY, colorInt, false,
-                    matrixStack.last().pose(), renderTypeBuffer, false, 0, 15728880);
-            textY += 10;
-        }
-
-        // Render distance info
-        if (LockOnConfig.showTargetDistance()) {
-            float distance = mc.player.distanceTo(target);
-            String distanceText;
-
-            if (LockOnConfig.getDistanceUnit() == LockOnConfig.DistanceUnit.METERS) {
-                distanceText = String.format("%.1fm", distance);
-            } else {
-                distanceText = String.format("%.1f blocks", distance);
-            }
-
-            float textWidth = mc.font.width(distanceText) * 0.5f;
-
-            mc.font.drawInBatch(distanceText, (float)pos.x - textWidth, textY, colorInt, false,
-                    matrixStack.last().pose(), renderTypeBuffer, false, 0, 15728880);
-        }
-
-        renderTypeBuffer.endBatch();
-        matrixStack.popPose();
-    }
-
-    /**
      * Update animation variables
      */
     private static void updateAnimation() {
@@ -678,75 +590,10 @@ public class LockOnRenderer {
     }
 
     /**
-     * Render health bar below indicator (1.16.5 compatible)
-     */
-    public static void renderHealthBar(MatrixStack matrixStack, Vector3d pos, float size,
-                                       LivingEntity target, boolean isThirdPerson) {
-        if (!LockOnConfig.showHealthBar() || target == null) return;
-
-        matrixStack.pushPose();
-
-        float barWidth = size * 2.0f;
-        float barHeight = size * 0.2f;
-        float barY = (float)pos.y - size - barHeight - 0.2f;
-
-        float healthPercent = target.getHealth() / target.getMaxHealth();
-
-        RenderSystem.enableBlend();
-        RenderSystem.defaultBlendFunc();
-        RenderSystem.disableDepthTest();
-        RenderSystem.disableTexture();
-
-        Tessellator tessellator = Tessellator.getInstance();
-        BufferBuilder buffer = tessellator.getBuilder();
-        Matrix4f matrix = matrixStack.last().pose();
-
-        buffer.begin(7, DefaultVertexFormats.POSITION_COLOR); // GL_QUADS
-
-        // Background bar (dark)
-        buffer.vertex(matrix, (float)pos.x - barWidth/2, barY, (float)pos.z)
-                .color(0, 0, 0, 128).endVertex();
-        buffer.vertex(matrix, (float)pos.x + barWidth/2, barY, (float)pos.z)
-                .color(0, 0, 0, 128).endVertex();
-        buffer.vertex(matrix, (float)pos.x + barWidth/2, barY + barHeight, (float)pos.z)
-                .color(0, 0, 0, 128).endVertex();
-        buffer.vertex(matrix, (float)pos.x - barWidth/2, barY + barHeight, (float)pos.z)
-                .color(0, 0, 0, 128).endVertex();
-
-        // Health bar (colored based on health)
-        Color healthColor;
-        if (healthPercent > 0.6f) {
-            healthColor = Color.GREEN;
-        } else if (healthPercent > 0.3f) {
-            healthColor = Color.YELLOW;
-        } else {
-            healthColor = Color.RED;
-        }
-
-        float healthWidth = barWidth * healthPercent;
-        buffer.vertex(matrix, (float)pos.x - barWidth/2, barY, (float)pos.z)
-                .color(healthColor.getRed(), healthColor.getGreen(), healthColor.getBlue(), 200).endVertex();
-        buffer.vertex(matrix, (float)pos.x - barWidth/2 + healthWidth, barY, (float)pos.z)
-                .color(healthColor.getRed(), healthColor.getGreen(), healthColor.getBlue(), 200).endVertex();
-        buffer.vertex(matrix, (float)pos.x - barWidth/2 + healthWidth, barY + barHeight, (float)pos.z)
-                .color(healthColor.getRed(), healthColor.getGreen(), healthColor.getBlue(), 200).endVertex();
-        buffer.vertex(matrix, (float)pos.x - barWidth/2, barY + barHeight, (float)pos.z)
-                .color(healthColor.getRed(), healthColor.getGreen(), healthColor.getBlue(), 200).endVertex();
-
-        tessellator.end();
-
-        RenderSystem.enableTexture();
-        RenderSystem.enableDepthTest();
-        RenderSystem.disableBlend();
-
-        matrixStack.popPose();
-    }
-
-    /**
      * Main rendering method that combines all effects
      */
     public static void renderCompleteIndicator(MatrixStack matrixStack, Entity target, Vector3d targetPos,
-                                               float size, LockOnConfig.IndicatorType type, boolean isThirdPerson) {
+                                               float size, boolean isThirdPerson) {
         if (target == null || !target.isAlive()) return;
 
         // Render glow effect first (behind everything)
@@ -757,11 +604,6 @@ public class LockOnRenderer {
         }
 
         // Render main indicator
-        renderLockOnIndicator(matrixStack, target, targetPos, size, type, isThirdPerson);
-
-        // Render health bar if enabled
-        if (target instanceof LivingEntity) {
-            renderHealthBar(matrixStack, targetPos, size, (LivingEntity)target, isThirdPerson);
-        }
+        renderLockOnIndicator(matrixStack, target, targetPos, size, isThirdPerson);
     }
 }

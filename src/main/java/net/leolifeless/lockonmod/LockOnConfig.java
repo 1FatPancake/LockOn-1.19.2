@@ -63,16 +63,10 @@ public class LockOnConfig {
         public final ForgeConfigSpec.BooleanValue autoBreakOnObstruction;
 
         // === VISUAL SETTINGS ===
-        public final ForgeConfigSpec.EnumValue<IndicatorType> indicatorType;
         public final ForgeConfigSpec.DoubleValue indicatorSize;
         public final ForgeConfigSpec.BooleanValue pulseEnabled;
         public final ForgeConfigSpec.BooleanValue glowEnabled;
-        public final ForgeConfigSpec.BooleanValue showTargetDistance;
-        public final ForgeConfigSpec.BooleanValue showTargetHealth;
-        public final ForgeConfigSpec.BooleanValue showTargetName;
-        public final ForgeConfigSpec.BooleanValue showDistance;
-        public final ForgeConfigSpec.BooleanValue showHealthBar;
-        public final ForgeConfigSpec.EnumValue<DistanceUnit> distanceUnit;
+        public final ForgeConfigSpec.ConfigValue<String> customIndicatorName;
 
         // === COLOR SETTINGS ===
         public final ForgeConfigSpec.ConfigValue<String> indicatorColorHex;
@@ -244,10 +238,6 @@ public class LockOnConfig {
             builder.comment("Visual Settings")
                     .push("visual");
 
-            indicatorType = builder
-                    .comment("Type of lock-on indicator to display")
-                    .defineEnum("indicatorType", IndicatorType.CIRCLE);
-
             indicatorSize = builder
                     .comment("Size of the lock-on indicator")
                     .defineInRange("indicatorSize", 1.0, 0.1, 5.0);
@@ -260,30 +250,9 @@ public class LockOnConfig {
                     .comment("Enable glow effect around indicators")
                     .define("glowEnabled", true);
 
-            showTargetDistance = builder
-                    .comment("Display distance to target")
-                    .define("showTargetDistance", true);
-
-            showTargetHealth = builder
-                    .comment("Display target health information")
-                    .define("showTargetHealth", true);
-
-            showTargetName = builder
-                    .comment("Display target name/type")
-                    .define("showTargetName", true);
-
-            // Legacy compatibility
-            showDistance = builder
-                    .comment("Display distance to target (legacy)")
-                    .define("showDistance", true);
-
-            showHealthBar = builder
-                    .comment("Display target health bar (legacy)")
-                    .define("showHealthBar", true);
-
-            distanceUnit = builder
-                    .comment("Unit for displaying distance")
-                    .defineEnum("distanceUnit", DistanceUnit.BLOCKS);
+            customIndicatorName = builder
+                    .comment("Active indicator name. Built-in shapes: circle, crosshair, diamond, square. Or use any custom PNG name from config/lockonmod/custom_indicators/")
+                    .define("customIndicatorName", "circle");
 
             builder.pop();
 
@@ -434,19 +403,6 @@ public class LockOnConfig {
         CROSSHAIR_CENTERED,
         THREAT_LEVEL,
         SMART
-    }
-
-    public enum IndicatorType {
-        CIRCLE,
-        CROSSHAIR,
-        DIAMOND,
-        SQUARE,
-        CUSTOM
-    }
-
-    public enum DistanceUnit {
-        BLOCKS,
-        METERS
     }
 
     // === STATIC ACCESSORS WITH SAFE ERROR HANDLING FOR 1.16.5 ===
@@ -652,15 +608,6 @@ public class LockOnConfig {
     }
 
     // Visual Settings
-    public static IndicatorType getIndicatorType() {
-        try {
-            return CLIENT.indicatorType.get();
-        } catch (Exception e) {
-            LockOnMod.LOGGER.warn("Error getting indicator type, using default: {}", e.getMessage());
-            return IndicatorType.CIRCLE;
-        }
-    }
-
     public static float getIndicatorSize() {
         try {
             float baseSize = CLIENT.indicatorSize.get().floatValue();
@@ -692,58 +639,11 @@ public class LockOnConfig {
         }
     }
 
-    public static boolean showTargetDistance() {
+    public static String getCustomIndicatorName() {
         try {
-            return CLIENT.showTargetDistance.get();
+            return CLIENT.customIndicatorName.get();
         } catch (Exception e) {
-            LockOnMod.LOGGER.warn("Error getting show target distance setting, using default: {}", e.getMessage());
-            return true;
-        }
-    }
-
-    public static boolean showTargetHealth() {
-        try {
-            return CLIENT.showTargetHealth.get();
-        } catch (Exception e) {
-            LockOnMod.LOGGER.warn("Error getting show target health setting, using default: {}", e.getMessage());
-            return true;
-        }
-    }
-
-    public static boolean showTargetName() {
-        try {
-            return CLIENT.showTargetName.get();
-        } catch (Exception e) {
-            LockOnMod.LOGGER.warn("Error getting show target name setting, using default: {}", e.getMessage());
-            return true;
-        }
-    }
-
-    // Legacy method compatibility
-    public static boolean showDistance() {
-        try {
-            return CLIENT.showDistance.get();
-        } catch (Exception e) {
-            LockOnMod.LOGGER.warn("Error getting show distance setting, using default: {}", e.getMessage());
-            return true;
-        }
-    }
-
-    public static boolean showHealthBar() {
-        try {
-            return CLIENT.showHealthBar.get();
-        } catch (Exception e) {
-            LockOnMod.LOGGER.warn("Error getting show health bar setting, using default: {}", e.getMessage());
-            return true;
-        }
-    }
-
-    public static DistanceUnit getDistanceUnit() {
-        try {
-            return CLIENT.distanceUnit.get();
-        } catch (Exception e) {
-            LockOnMod.LOGGER.warn("Error getting distance unit, using default: {}", e.getMessage());
-            return DistanceUnit.BLOCKS;
+            return "default";
         }
     }
 

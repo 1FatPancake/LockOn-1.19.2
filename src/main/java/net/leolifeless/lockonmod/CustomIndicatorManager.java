@@ -18,6 +18,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
 import java.util.stream.Stream;
+import java.util.Arrays;
 
 /**
  * Manages custom indicator textures from multiple sources (1.16.5 compatible)
@@ -32,6 +33,9 @@ public class CustomIndicatorManager {
     private static final Map<String, ResourceLocation> CUSTOM_INDICATORS = new HashMap<>();
     private static final Map<String, File> USER_INDICATORS = new HashMap<>();
 
+    // Cache of already-uploaded DynamicTextures so we don't re-register every frame
+    private static final Map<String, ResourceLocation> registeredUserTextures = new HashMap<>();
+
     // Current selected indicator
     private static String currentIndicatorName = "default";
 
@@ -39,8 +43,13 @@ public class CustomIndicatorManager {
     private static final String CUSTOM_INDICATORS_FOLDER = "config/lockonmod/custom_indicators";
     private static final String README_FILE = "README.txt";
 
+    // Drawn (geometry-based) indicator names — rendered directly, no texture needed
+    public static final Set<String> DRAWN_INDICATORS = new java.util.LinkedHashSet<>(
+            Arrays.asList("circle", "crosshair", "diamond", "square")
+    );
+
     static {
-        // Initialize built-in indicators using the helper method from LockOnMod
+        // PNG-based built-in indicators (shipped with the mod)
         BUILT_IN_INDICATORS.put("default", LockOnMod.location("textures/gui/custom_indicator.png"));
         BUILT_IN_INDICATORS.put("crosshair_alt", LockOnMod.location("textures/gui/crosshair_alt.png"));
         BUILT_IN_INDICATORS.put("target_circle", LockOnMod.location("textures/gui/target_circle.png"));
@@ -55,6 +64,7 @@ public class CustomIndicatorManager {
             createCustomIndicatorsFolder();
             loadUserIndicators();
             discoverResourcePackIndicators();
+            syncCurrentNameFromConfig();
 
             LOGGER.info("Custom Indicator Manager initialized with {} total indicators", getTotalIndicatorCount());
         } catch (Exception e) {
@@ -131,10 +141,26 @@ public class CustomIndicatorManager {
     }
 
     /**
+     * Syncs currentIndicatorName from the config value, falling back to "default" if not found.
+     */
+    private static void syncCurrentNameFromConfig() {
+        String configName = LockOnConfig.getCustomIndicatorName();
+        if (getAllIndicatorNames().contains(configName)) {
+            currentIndicatorName = configName;
+        } else {
+            if (!"default".equals(configName)) {
+                LOGGER.warn("Config indicator '{}' not found, falling back to 'default'", configName);
+            }
+            currentIndicatorName = "default";
+        }
+    }
+
+    /**
      * Loads user-provided indicators from the config folder
      */
     private static void loadUserIndicators() {
         USER_INDICATORS.clear();
+        registeredUserTextures.clear(); // invalidate GPU-side cache when files change
 
         try {
             Path customPath = Paths.get(CUSTOM_INDICATORS_FOLDER);
@@ -165,7 +191,7 @@ public class CustomIndicatorManager {
     }
 
     /**
-     * Discovers indicators provided by resource packs (1.16.5 compatible)
+     * Discovers indicators from resource packs by scanning textures/gui/indicators/ (1.16.5 compatible).
      */
     private static void discoverResourcePackIndicators() {
         CUSTOM_INDICATORS.clear();
@@ -174,27 +200,18 @@ public class CustomIndicatorManager {
             Minecraft minecraft = Minecraft.getInstance();
             if (minecraft == null) return;
 
-            // In 1.16.5, resource management is different
-            // We'll check for specific known patterns
-            String basePath = "textures/gui/indicators/";
+            // In 1.16.5, listResources takes a path prefix and a filename predicate
+            Collection<ResourceLocation> resources = minecraft.getResourceManager()
+                    .listResources("textures/gui/indicators", filename -> filename.endsWith(".png"));
 
-            // Check for specific known patterns
-            String[] possibleNames = {
-                    "custom_1", "custom_2", "custom_3", "custom_4", "custom_5",
-                    "user_crosshair", "user_reticle", "user_target", "user_scope"
-            };
+            for (ResourceLocation location : resources) {
+                String path = location.getPath();
+                String filename = path.substring(path.lastIndexOf('/') + 1);
+                String name = filename.substring(0, filename.lastIndexOf('.'));
 
-            for (String name : possibleNames) {
-                ResourceLocation location = LockOnMod.location(basePath + name + ".png");
-
-                try {
-                    // In 1.16.5, we check if resource exists differently
-                    if (minecraft.getResourceManager().hasResource(location)) {
-                        CUSTOM_INDICATORS.put(name, location);
-                        LOGGER.debug("Found resource pack indicator: {}", name);
-                    }
-                } catch (Exception e) {
-                    // Resource doesn't exist, continue
+                if (!BUILT_IN_INDICATORS.containsKey(name)) {
+                    CUSTOM_INDICATORS.put(name, location);
+                    LOGGER.debug("Found resource pack indicator: {} -> {}", name, location);
                 }
             }
 
@@ -235,15 +252,22 @@ public class CustomIndicatorManager {
         }
     }
 
+    /** Returns true if this name maps to a drawn (geometry) indicator rather than a texture. */
+    public static boolean isDrawnIndicator(String name) {
+        return DRAWN_INDICATORS.contains(name);
+    }
+
     /**
-     * Gets all available indicator names
+     * Gets all available indicator names — drawn shapes first, then PNG-based ones.
      */
     public static List<String> getAllIndicatorNames() {
-        List<String> names = new ArrayList<>();
-        names.addAll(BUILT_IN_INDICATORS.keySet());
-        names.addAll(CUSTOM_INDICATORS.keySet());
-        names.addAll(USER_INDICATORS.keySet());
-        Collections.sort(names);
+        List<String> names = new ArrayList<>(DRAWN_INDICATORS);
+        List<String> textureNames = new ArrayList<>();
+        textureNames.addAll(BUILT_IN_INDICATORS.keySet());
+        textureNames.addAll(CUSTOM_INDICATORS.keySet());
+        textureNames.addAll(USER_INDICATORS.keySet());
+        Collections.sort(textureNames);
+        names.addAll(textureNames);
         return names;
     }
 
@@ -272,23 +296,24 @@ public class CustomIndicatorManager {
     }
 
     /**
-     * Registers a user texture file as a dynamic texture (1.16.5 compatible)
+     * Registers a user texture file as a dynamic texture (1.16.5 compatible).
+     * Results are cached so the GPU upload only happens once per file.
      */
     private static ResourceLocation registerUserTexture(String name, File file) {
-        // Create a unique resource location for this user texture
+        if (registeredUserTextures.containsKey(name)) {
+            return registeredUserTextures.get(name);
+        }
+
         ResourceLocation location = LockOnMod.location("dynamic/user_" + name);
 
         try {
-            // Load the image
             BufferedImage bufferedImage = ImageIO.read(file);
-
-            // Convert BufferedImage to NativeImage (1.16.5 requirement)
             NativeImage nativeImage = convertBufferedImageToNativeImage(bufferedImage);
 
-            // Register it with Minecraft's texture manager (1.16.5 style)
             Minecraft.getInstance().getTextureManager().register(location,
                     new DynamicTexture(nativeImage));
 
+            registeredUserTextures.put(name, location);
             LOGGER.debug("Registered user texture: {} -> {}", name, location);
             return location;
 
@@ -372,11 +397,7 @@ public class CustomIndicatorManager {
         try {
             loadUserIndicators();
             discoverResourcePackIndicators();
-
-            // Ensure current indicator is still valid
-            if (!getAllIndicatorNames().contains(currentIndicatorName)) {
-                currentIndicatorName = "default";
-            }
+            syncCurrentNameFromConfig();
 
             LOGGER.info("Refreshed indicators, now have {} total", getTotalIndicatorCount());
         } catch (Exception e) {
@@ -420,6 +441,7 @@ public class CustomIndicatorManager {
         try {
             CUSTOM_INDICATORS.clear();
             USER_INDICATORS.clear();
+            registeredUserTextures.clear();
             currentIndicatorName = "default";
             LOGGER.info("Custom Indicator Manager cleaned up");
         } catch (Exception e) {
