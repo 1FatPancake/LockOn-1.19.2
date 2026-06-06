@@ -40,7 +40,6 @@ public class LockOnConfig {
         public final ForgeConfigSpec.BooleanValue autoBreakOnObstruction;
 
         // === INDICATOR ===
-        public final ForgeConfigSpec.EnumValue<IndicatorType> indicatorType;
         public final ForgeConfigSpec.DoubleValue  indicatorSize;
         public final ForgeConfigSpec.BooleanValue enablePulse;
         public final ForgeConfigSpec.DoubleValue  pulseSpeed;
@@ -62,13 +61,6 @@ public class LockOnConfig {
         public final ForgeConfigSpec.IntValue outlineColorGreen;
         public final ForgeConfigSpec.IntValue outlineColorBlue;
         public final ForgeConfigSpec.IntValue outlineColorAlpha;
-
-        // === HUD ===
-        public final ForgeConfigSpec.EnumValue<HudVariant> hudVariant;
-        public final ForgeConfigSpec.BooleanValue showTargetName;
-        public final ForgeConfigSpec.BooleanValue showHealthBar;
-        public final ForgeConfigSpec.BooleanValue showDistance;
-        public final ForgeConfigSpec.EnumValue<DistanceUnit> distanceUnit;
 
         // === FILTERS ===
         public final ForgeConfigSpec.BooleanValue targetPlayers;
@@ -158,10 +150,6 @@ public class LockOnConfig {
             // --- Indicator ---
             builder.comment("World-space lock-on indicator").push("indicator");
 
-            indicatorType = builder
-                    .comment("Indicator shape: CIRCLE, CROSSHAIR, DIAMOND, SQUARE, CUSTOM")
-                    .defineEnum("indicatorType", IndicatorType.CIRCLE);
-
             indicatorSize = builder
                     .comment("Size of the lock-on indicator")
                     .defineInRange("indicatorSize", 0.5, 0.1, 3.0);
@@ -195,8 +183,8 @@ public class LockOnConfig {
                     .define("dynamicColorBasedOnDistance", false);
 
             customIndicatorName = builder
-                    .comment("Custom indicator texture name (used when type is CUSTOM)")
-                    .define("customIndicatorName", "default");
+                    .comment("Active indicator name. Built-in shapes: circle, crosshair, diamond, square. Or use any custom PNG name from config/lockonmod/custom_indicators/")
+                    .define("customIndicatorName", "circle");
 
             builder.comment("Indicator fill color").push("color");
             indicatorColorRed   = builder.defineInRange("red",   255, 0, 255);
@@ -213,23 +201,6 @@ public class LockOnConfig {
             builder.pop();
 
             builder.pop(); // indicator
-
-            // --- HUD ---
-            builder.comment("HUD display options").push("hud");
-
-            hudVariant = builder
-                    .comment("HUD display style: CLASSIC, MINIMAL, COMPACT")
-                    .defineEnum("hudVariant", HudVariant.CLASSIC);
-
-            showTargetName = builder.define("showTargetName", true);
-            showHealthBar  = builder.define("showHealthBar",  true);
-            showDistance   = builder.define("showDistance",   true);
-
-            distanceUnit = builder
-                    .comment("Distance display unit: BLOCKS or METERS")
-                    .defineEnum("distanceUnit", DistanceUnit.BLOCKS);
-
-            builder.pop();
 
             // --- Filters ---
             builder.comment("Entity targeting filters").push("filters");
@@ -315,18 +286,6 @@ public class LockOnConfig {
         CLOSEST, MOST_DAMAGED, CROSSHAIR_CENTERED, THREAT_LEVEL
     }
 
-    public enum IndicatorType {
-        CIRCLE, CROSSHAIR, DIAMOND, SQUARE, CUSTOM
-    }
-
-    public enum HudVariant {
-        CLASSIC, MINIMAL, COMPACT
-    }
-
-    public enum DistanceUnit {
-        BLOCKS, METERS
-    }
-
     // === ACCESSORS ===
 
     public static float  getMaxLockOnDistance()    { return CLIENT.maxLockOnDistance.get().floatValue(); }
@@ -342,7 +301,6 @@ public class LockOnConfig {
     public static boolean isSmoothCameraEnabled()  { return CLIENT.enableSmoothCamera.get(); }
     public static boolean autoBreakOnObstruction() { return CLIENT.autoBreakOnObstruction.get(); }
 
-    public static IndicatorType getIndicatorType() { return CLIENT.indicatorType.get(); }
     public static float  getIndicatorSize()        { return CLIENT.indicatorSize.get().floatValue(); }
     public static boolean isPulseEnabled()         { return CLIENT.enablePulse.get(); }
     public static float  getPulseSpeed()           { return CLIENT.pulseSpeed.get().floatValue(); }
@@ -362,12 +320,6 @@ public class LockOnConfig {
         return new Color(CLIENT.outlineColorRed.get(), CLIENT.outlineColorGreen.get(),
                 CLIENT.outlineColorBlue.get(), CLIENT.outlineColorAlpha.get());
     }
-
-    public static boolean showTargetName()  { return CLIENT.showTargetName.get(); }
-    public static boolean showHealthBar()   { return CLIENT.showHealthBar.get(); }
-    public static boolean showDistance()    { return CLIENT.showDistance.get(); }
-    public static DistanceUnit getDistanceUnit() { return CLIENT.distanceUnit.get(); }
-    public static HudVariant getHudVariant() { return CLIENT.hudVariant.get(); }
 
     public static boolean canTargetPlayers()     { return CLIENT.targetPlayers.get(); }
     public static boolean canTargetHostileMobs() { return CLIENT.targetHostileMobs.get(); }

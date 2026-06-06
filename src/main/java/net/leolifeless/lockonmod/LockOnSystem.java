@@ -604,6 +604,11 @@ public class LockOnSystem {
             showMessage(player, "Indicator: " + (indicatorVisible ? "On" : "Off"));
             playSound(player, "target_switch");
         }
+        if (LockOnKeybinds.cycleIndicatorTypeKey.consumeClick()) {
+            String next = CustomIndicatorManager.cycleToNextIndicator();
+            showMessage(player, "Indicator: " + next);
+            playSound(player, "target_switch");
+        }
     }
 
     // =========================================================

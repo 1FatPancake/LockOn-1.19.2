@@ -19,7 +19,6 @@ import org.joml.Vector3f;
 
 import java.awt.*;
 
-import static net.leolifeless.lockonmod.LockOnMod.MOD_ID;
 
 public class LockOnRenderer {
     // Animation variables
@@ -27,10 +26,6 @@ public class LockOnRenderer {
     private static float pulseSize = 0.0F;
     private static float glowSize = 0.0F;
     private static float rotationAngle = 0.0F;
-
-    // Custom texture for the indicator
-    private static final ResourceLocation CUSTOM_INDICATOR_TEXTURE =
-            new ResourceLocation(MOD_ID, "textures/gui/custom_indicator.png");
 
     /**
      * Main rendering method with enhanced features - now only renders the indicator
@@ -81,24 +76,14 @@ public class LockOnRenderer {
             renderGlowEffect(poseStack, animatedSize, indicatorColor);
         }
 
-        // Render main indicator based on type
-        LockOnConfig.IndicatorType type = LockOnConfig.getIndicatorType();
-        switch (type) {
-            case CIRCLE:
-                renderCircleIndicator(poseStack, animatedSize, indicatorColor);
-                break;
-            case CROSSHAIR:
-                renderCrosshairIndicator(poseStack, animatedSize, indicatorColor);
-                break;
-            case DIAMOND:
-                renderDiamondIndicator(poseStack, animatedSize, indicatorColor);
-                break;
-            case SQUARE:
-                renderSquareIndicator(poseStack, animatedSize, indicatorColor);
-                break;
-            case CUSTOM:
-                renderCustomIndicator(poseStack, animatedSize, indicatorColor);
-                break;
+        // Render main indicator — drawn shapes by name, everything else as a texture
+        String indicatorName = CustomIndicatorManager.getCurrentIndicatorName();
+        switch (indicatorName) {
+            case "circle"    -> renderCircleIndicator(poseStack, animatedSize, indicatorColor);
+            case "crosshair" -> renderCrosshairIndicator(poseStack, animatedSize, indicatorColor);
+            case "diamond"   -> renderDiamondIndicator(poseStack, animatedSize, indicatorColor);
+            case "square"    -> renderSquareIndicator(poseStack, animatedSize, indicatorColor);
+            default          -> renderCustomIndicator(poseStack, animatedSize, indicatorColor);
         }
 
         // Clean up rendering

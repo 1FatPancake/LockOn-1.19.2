@@ -101,8 +101,6 @@ public class ThirdPersonCompatibility {
     public static void ensurePlayerRotationSettings() {
         ActiveThirdPersonMod activeMod = getActiveMod();
 
-        LOGGER.info("Lock-On Starting | Active Mod: {}", activeMod.name());
-
         if (activeMod == ActiveThirdPersonMod.SHOULDER_SURFING) {
             ShoulderSurfingCompat.enableLockOnMode();
         }
@@ -114,7 +112,6 @@ public class ThirdPersonCompatibility {
      * Disable lock-on mode and restore settings
      */
     public static void restorePlayerRotationSettings() {
-        LOGGER.info("Lock-On Ending");
 
         if (ShoulderSurfingCompat.isLockOnModeActive()) {
             ShoulderSurfingCompat.disableLockOnMode();
